@@ -5,10 +5,10 @@ import torch
 HIDDEN_UNITS = 64
 
 
-class DQNDense(nn.Module):
+class DQNDuelingDense(nn.Module):
 
     def __init__(self, observation_size, action_size):
-        super(DQNDense, self).__init__()
+        super(DQNDuelingDense, self).__init__()
         self._action_size = action_size
 
         self.fc1 = nn.Linear(observation_size, HIDDEN_UNITS)
@@ -35,5 +35,23 @@ class DQNDense(nn.Module):
         advantage = advantage - avg
 
         q = value + advantage
+
+        return q
+
+class DQNDense(nn.Module):
+
+    def __init__(self, observation_size, action_size):
+        super(DQNDense, self).__init__()
+
+        self.fc1 = nn.Linear(observation_size, HIDDEN_UNITS)
+        self.fc2 = nn.Linear(HIDDEN_UNITS, HIDDEN_UNITS)
+        self.fc3 = nn.Linear(HIDDEN_UNITS, action_size)
+
+    def forward(self, x):
+        x = x.float()
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+
+        q = self.fc3(x)
 
         return q

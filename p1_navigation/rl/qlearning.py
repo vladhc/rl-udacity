@@ -5,7 +5,7 @@ import torch.optim as optim
 
 import tensorflow as tf  # for TensorBoard
 
-from rl import ReplayBuffer, DQNDense
+from rl import ReplayBuffer, DQNDense, DQNDuelingDense
 from rl import GreedyPolicy, EpsilonPolicy
 
 
@@ -15,6 +15,7 @@ class QLearning:
             self,
             env,
             session_id,
+            dueling=True,
             observation_size=None,
             action_size=None,
             replay_buffer_size=10000,
@@ -43,8 +44,12 @@ class QLearning:
         if action_size is None:
             action_size = env.action_space.n
 
-        self._policy_net = DQNDense(observation_size, action_size)
-        self._target_net = DQNDense(observation_size, action_size)
+        if dueling:
+            self._policy_net = DQNDuelingDense(observation_size, action_size)
+            self._target_net = DQNDuelingDense(observation_size, action_size)
+        else:
+            self._policy_net = DQNDense(observation_size, action_size)
+            self._target_net = DQNDense(observation_size, action_size)
         self._target_net.train(False)
         self._policy = GreedyPolicy()
         self._epsilon_greedy_policy = EpsilonPolicy(

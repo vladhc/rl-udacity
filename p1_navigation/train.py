@@ -33,7 +33,7 @@ def createBananaEnv():
     return env
 
 
-def main(session, env_id):
+def main(session, env_id, dueling):
     if env_id == "banana":
         env = createBananaEnv()
     else:
@@ -48,6 +48,7 @@ def main(session, env_id):
     ql = QLearning(
         env,
         session,
+        dueling=dueling,
         observation_size=env.state_size,
         action_size=env.action_size,
         max_episode_steps=2000,
@@ -59,12 +60,14 @@ def main(session, env_id):
         gamma=0.99,
         learning_rate=0.001,
         replay_buffer_size=10000)
-    ql.train(600)
+    ql.train(60)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--sess")
     parser.add_argument("--env")
+    parser.add_argument("--dueling", action="store_true")
+    parser.set_defaults(dueling=False)
     args = parser.parse_args()
-    main(args.sess, args.env)
+    main(args.sess, args.env, args.dueling)
