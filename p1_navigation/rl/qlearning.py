@@ -16,6 +16,7 @@ class QLearning:
             env,
             session_id,
             dueling=True,
+            double=True,
             observation_size=None,
             action_size=None,
             replay_buffer_size=10000,
@@ -29,6 +30,7 @@ class QLearning:
             epsilon_decay=200):
 
         self._env = env
+        self._double = double
         self._session_id = session_id
         self._max_episode_steps = max_episode_steps
         self._buffer = ReplayBuffer(replay_buffer_size)
@@ -171,10 +173,15 @@ class QLearning:
         ])
 
         # Calculate TD Target
-        # Double DQN: use target_net for Q values estimation of the next_state
-        # and policy_net for choosing the action in the next_state
-        next_q_pnet = self._policy_net(non_term_next_states).detach()
-        next_actions = torch.argmax(next_q_pnet, dim=1).unsqueeze(dim=1)
+        if self._double:
+            # Double DQN: use target_net for Q values estimation of the
+            # next_state and policy_net for choosing the action
+            # in the next_state.
+            next_q_pnet = self._policy_net(non_term_next_states).detach()
+            next_actions = torch.argmax(next_q_pnet, dim=1).unsqueeze(dim=1)
+        else:
+            next_q_tnet = self._target_net(non_term_next_states).detach()
+            next_actions = torch.argmax(next_q_tnet, dim=1).unsqueeze(dim=1)
         next_q = torch.zeros((self._batch_size, 1))
         next_q[non_term_mask] = self._target_net(non_term_next_states).gather(
                 1, next_actions).detach()  # detach → don't backpropagate
