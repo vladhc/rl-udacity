@@ -96,6 +96,8 @@ class QLearning:
                 t0 = time.time()
                 next_state, reward, done, info = self._env.step(action)
                 env_time += (time.time() - t0)
+                if done:
+                    next_state = None
                 self._buffer.push(state, action, reward, next_state)
                 state = next_state
 
@@ -140,17 +142,40 @@ class QLearning:
         states, actions, rewards, next_states = self._buffer.sample(
                 self._batch_size)
 
-        q = self._policy_net(states).gather(1, actions)
+        # Make Replay Buffer values consumable by PyTorch
+        states = torch.stack([torch.from_numpy(s) for s in states])
+        actions = torch.stack([
+            torch.tensor([a]) for a in actions
+        ])
+        rewards = torch.stack([
+            torch.tensor([r]) for r in rewards
+        ])
+        # For term states the Q value is calculated differently:
+        #   Q(term_state) = R
+        non_term_mask = torch.tensor(
+                [s is not None for s in next_states],
+                dtype=torch.uint8)
+        non_term_next_states = [
+            next_state
+            for next_state in next_states
+            if next_state is not None
+        ]
+        non_term_next_states = torch.stack([
+            torch.from_numpy(next_state)
+            for next_state in non_term_next_states
+        ])
 
+        # Calculate TD Target
         # Double DQN: use target_net for Q values estimation of the next_state
         # and policy_net for choosing the action in the next_state
-        next_q_pnet = self._policy_net(next_states).detach()
-        next_actions = torch.argmax(next_q_pnet, dim=1).view(
-                self._batch_size, -1)
-        assert next_actions.size() == actions.size()
-        # detach → don't backpropagate
-        next_q = self._target_net(next_states).gather(1, next_actions).detach()
+        next_q_pnet = self._policy_net(non_term_next_states).detach()
+        next_actions = torch.argmax(next_q_pnet, dim=1).unsqueeze(dim=1)
+        next_q = torch.zeros((self._batch_size, 1))
+        next_q[non_term_mask] = self._target_net(non_term_next_states).gather(
+                1, next_actions).detach()  # detach → don't backpropagate
         target_q = rewards + self._gamma * next_q
+
+        q = self._policy_net(states).gather(1, actions)
 
         loss = self._loss_fn(q, target_q)
 

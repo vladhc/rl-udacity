@@ -24,20 +24,14 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         batch_size = min(len(self), batch_size)
-        indexes = np.random.choice(len(self._buffer), size=batch_size, replace=True)
-        states = torch.stack([
-            torch.from_numpy(self._buffer[idx].state) for idx in indexes
-        ])
-        actions = torch.stack([
-            torch.tensor([self._buffer[idx].action]) for idx in indexes
-        ])
-        rewards = torch.stack([
-            torch.tensor([self._buffer[idx].reward]) for idx in indexes
-        ])
-        next_states = torch.stack([
-                torch.from_numpy(self._buffer[idx].next_state)
-                for idx in indexes
-        ])
+        indexes = np.random.choice(
+                len(self._buffer),
+                size=batch_size,
+                replace=True)
+        states = [self._buffer[idx].state for idx in indexes]
+        actions = [self._buffer[idx].action for idx in indexes]
+        rewards = [self._buffer[idx].reward for idx in indexes]
+        next_states = [self._buffer[idx].next_state for idx in indexes]
         return states, actions, rewards, next_states
 
     def __len__(self):
