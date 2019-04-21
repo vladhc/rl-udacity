@@ -14,6 +14,7 @@ class QLearning:
     def __init__(
             self,
             env,
+            session_id,
             observation_size=None,
             action_size=None,
             replay_buffer_size=10000,
@@ -27,6 +28,7 @@ class QLearning:
             epsilon_decay=200):
 
         self._env = env
+        self._session_id = session_id
         self._max_episode_steps = max_episode_steps
         self._buffer = ReplayBuffer(replay_buffer_size)
         self._batch_size = batch_size
@@ -55,12 +57,15 @@ class QLearning:
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
                 lr=learning_rate)
-        self._summary_writer = tf.summary.FileWriter('./train/baseline', None)
+        self._summary_writer = tf.summary.FileWriter(
+                './train/{}'.format(self._session_id), None)
 
     def save_model(self):
         if self._i_episode % 10 != 0:
             return
-        filename = 'checkpoint-{}.pth'.format(self._i_episode)
+        filename = 'checkpoins/{}-{}.pth'.format(
+                self._session_id,
+                self._i_episode)
         torch.save(self._policy_net, filename)
 
     def train(self, n_episodes):

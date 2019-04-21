@@ -1,3 +1,4 @@
+import argparse
 import torch
 import numpy as np
 
@@ -6,9 +7,11 @@ from rl import QLearning, UnityEnvAdapter
 from unityagents import UnityEnvironment
 import gym
 
+
 class SpartaWrapper(gym.Wrapper):
-    """ Pain only → reward = -1, that's why this is Sparta!!! """
+
     def step(self, action):
+        """ Pain only → reward = -1, that's why this is Sparta!!! """
         state, reward, done, debug = self.env.step(action)
         reward = -1.0 if done else 0.0
         return state, reward, done, debug
@@ -19,15 +22,22 @@ def createCartPoleEnv():
     env = SpartaWrapper(env)
     env.state_size = 4
     env.action_size = 2
+    print("Created CartPole-v1 environment")
     return env
+
 
 def createBananaEnv():
     env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
     env = UnityEnvAdapter(env)
+    print("Created Banana environment")
     return env
 
-def main():
-    env = createCartPoleEnv()
+
+def main(session, env_id):
+    if env_id == "banana":
+        env = createBananaEnv()
+    else:
+        env = createCartPoleEnv()
 
     # Reproducibility
     torch.manual_seed(42)
@@ -37,6 +47,7 @@ def main():
 
     ql = QLearning(
         env,
+        session,
         observation_size=env.state_size,
         action_size=env.action_size,
         max_episode_steps=2000,
@@ -50,5 +61,10 @@ def main():
         replay_buffer_size=10000)
     ql.train(1500)
 
+
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sess")
+    parser.add_argument("--env")
+    args = parser.parse_args()
+    main(args.sess, args.env)
