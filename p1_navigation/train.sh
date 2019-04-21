@@ -2,7 +2,7 @@
 
 set -eu
 
-ENV="cartpole-rewardmod"
+ENV="CartPole-v1"
 
 mkdir -p checkpoins
 mkdir -p train

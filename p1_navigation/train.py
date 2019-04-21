@@ -17,12 +17,10 @@ class SpartaWrapper(gym.Wrapper):
         return state, reward, done, debug
 
 
-def createCartPoleEnv():
-    env = gym.make("CartPole-v1")
-    env = SpartaWrapper(env)
-    env.state_size = 4
-    env.action_size = 2
-    print("Created CartPole-v1 environment")
+def createGymEnv(env_id):
+    env = gym.make(env_id)
+    if env_id == "CartPole-v1":
+        env = SpartaWrapper(env)
     return env
 
 
@@ -37,7 +35,7 @@ def main(session, env_id, dueling, double):
     if env_id == "banana":
         env = createBananaEnv()
     else:
-        env = createCartPoleEnv()
+        env = createGymEnv(env_id)
 
     # Reproducibility
     torch.manual_seed(42)
@@ -50,8 +48,6 @@ def main(session, env_id, dueling, double):
         session,
         dueling=dueling,
         double=double,
-        observation_size=env.state_size,
-        action_size=env.action_size,
         max_episode_steps=2000,
         target_update_freq=100,
         epsilon_start=0.5,

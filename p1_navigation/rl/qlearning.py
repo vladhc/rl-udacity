@@ -17,8 +17,6 @@ class QLearning:
             session_id,
             dueling=True,
             double=True,
-            observation_size=None,
-            action_size=None,
             replay_buffer_size=10000,
             target_update_freq=10,
             max_episode_steps=200,
@@ -28,6 +26,7 @@ class QLearning:
             epsilon_start=0.5,
             epsilon_end=0.1,
             epsilon_decay=200):
+
 
         self._env = env
         self._double = double
@@ -41,17 +40,26 @@ class QLearning:
 
         self._loss_fn = nn.MSELoss()
 
-        if observation_size is None:
-            observation_size = env.observation_space.shape[0]
-        if action_size is None:
+        try:
             action_size = env.action_space.n
+            observation_size = env.observation_space.shape
+        except AttributeError:
+            action_size = env.action_size
+            observation_size = (env.state_size, )
 
         if dueling:
-            self._policy_net = DQNDuelingDense(observation_size, action_size)
-            self._target_net = DQNDuelingDense(observation_size, action_size)
+            if len(observation_size) == 1:
+                self._policy_net = DQNDuelingDense(observation_size[0], action_size)
+                self._target_net = DQNDuelingDense(observation_size[0], action_size)
+            else:
+                assert False
         else:
-            self._policy_net = DQNDense(observation_size, action_size)
-            self._target_net = DQNDense(observation_size, action_size)
+            if len(observation_size) == 1:
+                self._policy_net = DQNDense(observation_size[0], action_size)
+                self._target_net = DQNDense(observation_size[0], action_size)
+            else:
+                assert False
+
         self._target_net.train(False)
         self._policy = GreedyPolicy()
         self._epsilon_greedy_policy = EpsilonPolicy(
