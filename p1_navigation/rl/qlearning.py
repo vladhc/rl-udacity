@@ -157,7 +157,8 @@ class QLearning:
         self._optimizer.zero_grad()
         loss.backward()
         for param in self._policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+            if param.grad is not None:
+                param.grad.data.clamp_(-1, 1)
         self._optimizer.step()
 
         if self._optimization_step % self._target_update_freq == 0:
