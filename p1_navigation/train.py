@@ -59,7 +59,7 @@ def main(session, env_id):
         gamma=0.99,
         learning_rate=0.001,
         replay_buffer_size=10000)
-    ql.train(1500)
+    ql.train(600)
 
 
 if __name__ == '__main__':

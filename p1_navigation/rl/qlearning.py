@@ -34,6 +34,7 @@ class QLearning:
         self._batch_size = batch_size
         self._target_update_freq = target_update_freq
         self._gamma = gamma
+        self._optimization_step = 0
 
         self._loss_fn = nn.MSELoss()
 
@@ -44,7 +45,6 @@ class QLearning:
 
         self._policy_net = DQNDense(observation_size, action_size)
         self._target_net = DQNDense(observation_size, action_size)
-        self._target_net.load_state_dict(self._policy_net.state_dict())
         self._target_net.train(False)
         self._policy = GreedyPolicy()
         self._epsilon_greedy_policy = EpsilonPolicy(
@@ -69,7 +69,6 @@ class QLearning:
         torch.save(self._policy_net, filename)
 
     def train(self, n_episodes):
-        self._step = 0
 
         for i_episode in range(n_episodes):
 
@@ -115,7 +114,6 @@ class QLearning:
 
                 if done:
                     break
-                self._step += 1
                 episode_steps += 1
 
             episode_end_time = time.time()
@@ -144,11 +142,14 @@ class QLearning:
 
         q = self._policy_net(states).gather(1, actions)
 
-        next_q = self._target_net(next_states).detach()
-        next_actions = torch.argmax(next_q, dim=1).view(self._batch_size, -1)
+        # Double DQN: use target_net for Q values estimation of the next_state
+        # and policy_net for choosing the action in the next_state
+        next_q_pnet = self._policy_net(next_states).detach()
+        next_actions = torch.argmax(next_q_pnet, dim=1).view(
+                self._batch_size, -1)
         assert next_actions.size() == actions.size()
         # detach → don't backpropagate
-        next_q = next_q.gather(1, next_actions).detach()
+        next_q = self._target_net(next_states).gather(1, next_actions).detach()
         target_q = rewards + self._gamma * next_q
 
         loss = self._loss_fn(q, target_q)
@@ -159,9 +160,10 @@ class QLearning:
             param.grad.data.clamp_(-1, 1)
         self._optimizer.step()
 
-        if self._step % self._target_update_freq == 0:
+        if self._optimization_step % self._target_update_freq == 0:
             self._target_net.load_state_dict(self._policy_net.state_dict())
 
+        self._optimization_step += 1
         return loss
 
     def _log_scalar(self, tag, value):
