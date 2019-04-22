@@ -31,7 +31,7 @@ def createBananaEnv():
     return env
 
 
-def main(session, env_id, dueling, double):
+def main(session, env_id, dueling, double, noisy, episodes):
     if env_id == "banana":
         env = createBananaEnv()
     else:
@@ -48,6 +48,7 @@ def main(session, env_id, dueling, double):
         session,
         dueling=dueling,
         double=double,
+        noisy=noisy,
         max_episode_steps=2000,
         target_update_freq=100,
         epsilon_start=0.5,
@@ -57,7 +58,7 @@ def main(session, env_id, dueling, double):
         gamma=0.99,
         learning_rate=0.001,
         replay_buffer_size=10000)
-    ql.train(1800)
+    ql.train(episodes)
 
 
 if __name__ == '__main__':
@@ -66,6 +67,16 @@ if __name__ == '__main__':
     parser.add_argument("--env")
     parser.add_argument("--dueling", action="store_true")
     parser.add_argument("--double", action="store_true")
+    parser.add_argument("--noisy", action="store_true")
+    parser.add_argument("--steps", type=int, default=600)
     parser.set_defaults(dueling=False)
+    parser.set_defaults(double=False)
+    parser.set_defaults(noisy=False)
     args = parser.parse_args()
-    main(args.sess, args.env, args.dueling, args.double)
+    main(args.sess,
+        env_id=args.env,
+        dueling=args.dueling,
+        double=args.double,
+        noisy=args.noisy,
+        episodes=args.steps,
+    )
