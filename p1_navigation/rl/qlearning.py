@@ -17,6 +17,7 @@ class QLearning:
             session_id,
             dueling=True,
             double=True,
+            noisy=True,
             replay_buffer_size=10000,
             target_update_freq=10,
             max_episode_steps=200,
@@ -49,25 +50,38 @@ class QLearning:
 
         if dueling:
             if len(observation_size) == 1:
-                self._policy_net = DQNDuelingDense(observation_size[0], action_size)
-                self._target_net = DQNDuelingDense(observation_size[0], action_size)
+                self._policy_net = DQNDuelingDense(
+                        observation_size[0],
+                        action_size,
+                        noisy=noisy)
+                self._target_net = DQNDuelingDense(
+                        observation_size[0],
+                        action_size,
+                        noisy=noisy)
             else:
                 assert False
         else:
             if len(observation_size) == 1:
-                self._policy_net = DQNDense(observation_size[0], action_size)
-                self._target_net = DQNDense(observation_size[0], action_size)
+                self._policy_net = DQNDense(
+                        observation_size[0],
+                        action_size,
+                        noisy=noisy)
+                self._target_net = DQNDense(
+                        observation_size[0],
+                        action_size,
+                        noisy=noisy)
             else:
                 assert False
 
         self._target_net.train(False)
         self._policy = GreedyPolicy()
-        self._epsilon_greedy_policy = EpsilonPolicy(
-                self._policy,
-                action_size,
-                epsilon_start=epsilon_start,
-                epsilon_end=epsilon_end,
-                epsilon_decay=epsilon_decay)
+        if not noisy:
+            self._policy = EpsilonPolicy(
+                    self._policy,
+                    action_size,
+                    epsilon_start=epsilon_start,
+                    epsilon_end=epsilon_end,
+                    epsilon_decay=epsilon_decay)
 
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
@@ -107,7 +121,7 @@ class QLearning:
                 with torch.no_grad():
                     q_values = self._policy_net(state_tensor)
 
-                action = self._epsilon_greedy_policy.get_action(q_values)
+                action = self._policy.get_action(q_values)
                 t0 = time.time()
                 next_state, reward, done, info = self._env.step(action)
                 env_time += (time.time() - t0)
@@ -147,9 +161,12 @@ class QLearning:
             self._log_scalar('time_other',
                     episode_end_time - episode_start_time \
                             - optimization_time - env_time)
-            self._log_scalar(
-                    'epsilon',
-                    self._epsilon_greedy_policy.get_epsilon())
+            try:
+                self._log_scalar(
+                        'epsilon',
+                        self._epsilon_greedy_policy.get_epsilon())
+            except AttributeError:
+                pass
             self._summary_writer.flush()
 
     def _optimize(self):

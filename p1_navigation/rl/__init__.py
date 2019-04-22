@@ -1,3 +1,4 @@
+from .noisy import NoisyLinear
 from .buffer import ReplayBuffer
 from .policy import GreedyPolicy
 from .policy import EpsilonPolicy
