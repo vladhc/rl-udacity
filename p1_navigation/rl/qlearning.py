@@ -1,4 +1,6 @@
 import time
+import shutil
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -28,7 +30,6 @@ class QLearning:
             epsilon_end=0.1,
             epsilon_decay=200):
 
-
         self._env = env
         self._double = double
         self._session_id = session_id
@@ -43,35 +44,29 @@ class QLearning:
 
         try:
             action_size = env.action_space.n
-            observation_size = env.observation_space.shape
+            observation_shape = env.observation_space.shape
         except AttributeError:
             action_size = env.action_size
-            observation_size = (env.state_size, )
+            observation_shape = (env.state_size, )
 
         if dueling:
-            if len(observation_size) == 1:
-                self._policy_net = DQNDuelingDense(
-                        observation_size[0],
-                        action_size,
-                        noisy=noisy)
-                self._target_net = DQNDuelingDense(
-                        observation_size[0],
-                        action_size,
-                        noisy=noisy)
-            else:
-                assert False
+            self._policy_net = DQNDuelingDense(
+                    observation_shape,
+                    action_size,
+                    noisy=noisy)
+            self._target_net = DQNDuelingDense(
+                    observation_shape,
+                    action_size,
+                    noisy=noisy)
         else:
-            if len(observation_size) == 1:
-                self._policy_net = DQNDense(
-                        observation_size[0],
-                        action_size,
-                        noisy=noisy)
-                self._target_net = DQNDense(
-                        observation_size[0],
-                        action_size,
-                        noisy=noisy)
-            else:
-                assert False
+            self._policy_net = DQNDense(
+                    observation_shape,
+                    action_size,
+                    noisy=noisy)
+            self._target_net = DQNDense(
+                    observation_shape,
+                    action_size,
+                    noisy=noisy)
 
         self._target_net.train(False)
         self._policy = GreedyPolicy()
@@ -86,8 +81,10 @@ class QLearning:
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
                 lr=learning_rate)
-        self._summary_writer = tf.summary.FileWriter(
-                './train/{}'.format(self._session_id), None)
+
+        summary_file = "./train/{}".format(self._session_id)
+        shutil.rmtree(summary_file, ignore_errors=True)
+        self._summary_writer = tf.summary.FileWriter(summary_file, None)
 
     def save_model(self):
         if self._i_episode % 10 != 0:
@@ -148,7 +145,6 @@ class QLearning:
                 episode_steps += 1
 
             episode_end_time = time.time()
-            print('episode', i_episode, ', reward:', reward_acc)
             self._log_scalar('episode_steps', episode_steps)
             self._log_scalar('q_start', q_start)
             self._log_scalar('q_avg', q_acc / episode_steps)
@@ -180,7 +176,7 @@ class QLearning:
             torch.tensor([a]) for a in actions
         ])
         rewards = torch.stack([
-            torch.tensor([r]) for r in rewards
+            torch.tensor([r], dtype=torch.float) for r in rewards
         ])
         # For term states the Q value is calculated differently:
         #   Q(term_state) = R

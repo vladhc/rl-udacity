@@ -1,11 +1,13 @@
 import argparse
 import torch
 import numpy as np
+from collections import deque
 
 from rl import QLearning, UnityEnvAdapter
 
 from unityagents import UnityEnvironment
 import gym
+from gym import spaces
 
 
 class SpartaWrapper(gym.Wrapper):
@@ -31,17 +33,17 @@ def createBananaEnv():
     return env
 
 
-def main(session, env_id, dueling, double, noisy, episodes):
+def main(session, env_id, dueling, double, noisy, episodes, seed):
     if env_id == "banana":
         env = createBananaEnv()
     else:
         env = createGymEnv(env_id)
 
     # Reproducibility
-    torch.manual_seed(42)
+    torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    np.random.seed(42)
+    np.random.seed(seed)
 
     ql = QLearning(
         env,
@@ -69,14 +71,19 @@ if __name__ == '__main__':
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true")
     parser.add_argument("--steps", type=int, default=600)
+    parser.add_argument("--seeds", type=int, default=3)
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
     parser.set_defaults(noisy=False)
     args = parser.parse_args()
-    main(args.sess,
-        env_id=args.env,
-        dueling=args.dueling,
-        double=args.double,
-        noisy=args.noisy,
-        episodes=args.steps,
-    )
+
+    for seed in range(args.seeds):
+        sess_id = "{}-{}".format(args.sess, seed)
+        main(sess_id,
+            env_id=args.env,
+            dueling=args.dueling,
+            double=args.double,
+            noisy=args.noisy,
+            episodes=args.steps,
+            seed=seed,
+        )
