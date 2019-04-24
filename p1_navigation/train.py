@@ -33,7 +33,7 @@ def createBananaEnv():
     return env
 
 
-def main(session, env_id, dueling, double, noisy, episodes, seed):
+def main(session, env_id, dueling, double, noisy, priority, episodes, seed):
     if env_id == "banana":
         env = createBananaEnv()
     else:
@@ -51,6 +51,7 @@ def main(session, env_id, dueling, double, noisy, episodes, seed):
         dueling=dueling,
         double=double,
         noisy=noisy,
+        priority=priority,
         max_episode_steps=2000,
         target_update_freq=100,
         epsilon_start=0.5,
@@ -70,11 +71,13 @@ if __name__ == '__main__':
     parser.add_argument("--dueling", action="store_true")
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true")
+    parser.add_argument("--priority", action="store_true")
     parser.add_argument("--steps", type=int, default=600)
     parser.add_argument("--seeds", type=int, default=3)
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
     parser.set_defaults(noisy=False)
+    parser.set_defaults(priority=False)
     args = parser.parse_args()
 
     for seed in range(args.seeds):
@@ -85,5 +88,6 @@ if __name__ == '__main__':
             double=args.double,
             noisy=args.noisy,
             episodes=args.steps,
+            priority=args.priority,
             seed=seed,
         )

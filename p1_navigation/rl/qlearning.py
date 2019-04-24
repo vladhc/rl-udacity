@@ -7,7 +7,8 @@ import torch.optim as optim
 
 import tensorflow as tf  # for TensorBoard
 
-from rl import ReplayBuffer, DQNDense, DQNDuelingDense
+from rl import DQNDense, DQNDuelingDense
+from rl import ReplayBuffer, PriorityReplayBuffer
 from rl import GreedyPolicy, EpsilonPolicy
 
 
@@ -20,6 +21,7 @@ class QLearning:
             dueling=True,
             double=True,
             noisy=True,
+            priority=True,
             replay_buffer_size=10000,
             target_update_freq=10,
             max_episode_steps=200,
@@ -34,13 +36,17 @@ class QLearning:
         self._double = double
         self._session_id = session_id
         self._max_episode_steps = max_episode_steps
-        self._buffer = ReplayBuffer(replay_buffer_size)
+        if priority:
+            self._buffer = PriorityReplayBuffer(replay_buffer_size)
+        else:
+            self._buffer = ReplayBuffer(replay_buffer_size)
         self._batch_size = batch_size
         self._target_update_freq = target_update_freq
         self._gamma = gamma
         self._optimization_step = 0
 
-        self._loss_fn = nn.MSELoss()
+        self._loss_fn = nn.MSELoss(reduce=False)
+        self._buffer_loss_fn = nn.L1Loss(reduce=False)
 
         try:
             action_size = env.action_space.n
@@ -167,7 +173,7 @@ class QLearning:
 
     def _optimize(self):
         self._policy_net.train(True)
-        states, actions, rewards, next_states = self._buffer.sample(
+        states, actions, rewards, next_states, ids = self._buffer.sample(
                 self._batch_size)
 
         # Make Replay Buffer values consumable by PyTorch
@@ -211,6 +217,14 @@ class QLearning:
         q = self._policy_net(states).gather(1, actions)
 
         loss = self._loss_fn(q, target_q)
+        try:
+            w = self._buffer.importance_sampling_weights(ids)
+            w = torch.from_numpy(w).float()
+            loss = w * loss
+        except AttributeError:
+            # Not a priority replay buffer
+            pass
+        loss = torch.mean(loss)
 
         self._optimizer.zero_grad()
         loss.backward()
@@ -223,6 +237,18 @@ class QLearning:
             self._target_net.load_state_dict(self._policy_net.state_dict())
 
         self._optimization_step += 1
+
+        # Update priorities in the Replay Buffer
+        with torch.no_grad():
+            buffer_loss = self._buffer_loss_fn(q, target_q)
+            buffer_loss = torch.squeeze(buffer_loss)
+            buffer_loss = buffer_loss.numpy()
+            try:
+                self._buffer.update_priorities(ids, buffer_loss)
+            except AttributeError:
+                # That's not a priority replay buffer
+                pass
+
         return loss
 
     def _log_scalar(self, tag, value):
