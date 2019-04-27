@@ -1,9 +1,8 @@
 import torch.nn.functional as F
 import torch.nn as nn
-import torch
 from rl import NoisyLinear
 
-HIDDEN_UNITS = 32
+HIDDEN_UNITS = 128
 
 
 def linearClass(noisy):
@@ -40,10 +39,11 @@ class DQNDuelingDense(nn.Module):
         advantage = F.leaky_relu(self.advantage_fc1(x))
         advantage = self.advantage_fc2(advantage)
 
-        q = value.expand_as(advantage) + (advantage - \
+        q = value.expand_as(advantage) + (advantage -
                 advantage.mean(dim=1, keepdim=True).expand_as(advantage))
 
         return q
+
 
 class DQNDense(nn.Module):
 

@@ -23,21 +23,28 @@ def createGymEnv(env_id):
     env = gym.make(env_id)
     if env_id == "CartPole-v1":
         env = SpartaWrapper(env)
-    return env
+    training_done_fn = lambda x: False
+    return env, training_done_fn
 
 
 def createBananaEnv():
     env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
     env = UnityEnvAdapter(env)
+
+    rewards = deque(maxlen=100)
+    def training_done_fn(reward_acc):
+        rewards.append(reward_acc)
+        return np.asarray(rewards).mean() > 13.0
+
     print("Created Banana environment")
-    return env
+    return env, training_done_fn
 
 
 def main(session, env_id, dueling, double, noisy, priority, episodes, seed):
     if env_id == "banana":
-        env = createBananaEnv()
+        env, done_fn = createBananaEnv()
     else:
-        env = createGymEnv(env_id)
+        env, done_fn = createGymEnv(env_id)
 
     # Reproducibility
     torch.manual_seed(seed)
@@ -57,10 +64,11 @@ def main(session, env_id, dueling, double, noisy, priority, episodes, seed):
         epsilon_start=0.5,
         epsilon_end=0.01,
         epsilon_decay=3000,
-        batch_size=64,
+        batch_size=128,
         gamma=0.99,
         learning_rate=0.001,
-        replay_buffer_size=10000)
+        training_done_fn=done_fn,
+        replay_buffer_size=100000)
     ql.train(episodes)
 
 

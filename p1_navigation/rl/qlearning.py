@@ -22,6 +22,7 @@ class QLearning:
             double=True,
             noisy=True,
             priority=True,
+            training_done_fn=lambda x: False,
             replay_buffer_size=10000,
             target_update_freq=10,
             max_episode_steps=200,
@@ -35,6 +36,7 @@ class QLearning:
         self._env = env
         self._double = double
         self._session_id = session_id
+        self._training_done_fn = training_done_fn
         self._max_episode_steps = max_episode_steps
         if priority:
             self._buffer = PriorityReplayBuffer(replay_buffer_size)
@@ -170,6 +172,12 @@ class QLearning:
             except AttributeError:
                 pass
             self._summary_writer.flush()
+
+            if self._training_done_fn(reward_acc):
+                self.save_model()
+                print("Training completed on {} episode".format(i_episode))
+                return
+
 
     def _optimize(self):
         self._policy_net.train(True)
