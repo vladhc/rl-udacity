@@ -8,6 +8,15 @@ STEPS=400
 
 ENV="LunarLander-v2"
 
+SESSION="lunar-double-dueling-noisy-priority"
+python train.py --sess "$SESSION" --env "$ENV" --double --dueling --noisy --priority --steps $STEPS
+
+SESSION="lunar-priority"
+python train.py --sess "$SESSION" --env "$ENV" --priority --steps $STEPS
+
+SESSION="lunar-double-priority"
+python train.py --sess "$SESSION" --env "$ENV" --double --priority --steps $STEPS
+
 SESSION="lunar-baseline"
 python train.py --sess "$SESSION" --env "$ENV" --steps $STEPS
 

@@ -42,56 +42,60 @@ class ReplayBuffer:
 
 
 EPSILON = 0.0001
-BIG_NUMBER = 10000000.0
+P0 = 1.0
 
 
 class PriorityReplayBuffer(ReplayBuffer):
 
-    def __init__(self, capacity, beta=1.0):
-        """ beta: Prioritization importance sampling """
+    def __init__(self, capacity, alpha=0.5, beta=1.0):
+        """
+        alpha: prioritization exponent. How much prioritization is used.
+               alpha = 0 → uniform
+               alpha = 1 → prioritirized
+        beta: Prioritization importance sampling
+        """
         ReplayBuffer.__init__(self, capacity)
-        self._priorities = []
+        self._idx = 0
+        self._priorities = np.zeros(capacity, dtype=float)
         self._beta = beta
+        self._alpha = alpha
 
     def set_beta(self, beta):
         self._beta = beta
 
     def update_priorities(self, indexes, priorities):
-        for i in range(len(indexes)):
-            idx = indexes[i]
-            self._priorities[idx] = priorities[i]
+        priorities = priorities + EPSILON
+        self._priorities[indexes] = priorities
 
     def importance_sampling_weights(self, indexes):
-        # p = self._probabilities()
-        p = self._p
-        p = [p[idx] for idx in indexes]
-        w = [(1 / prob) ** self._beta for prob in p]
-        max_w = np.max(w)
-        w = [x / max_w for x in w]
-        return np.asarray(w)
+        p = self._probabilities()
+        p = p[indexes]
+        n = len(self)
+        w = np.power(n * p, -self._beta)
+        w = w / np.max(w)
+        return w
 
     def _probabilities(self):
-        priorities = [(pr + EPSILON) for pr in self._priorities]
-        s = np.sum(priorities)
-        assert s > 0
-        p = [(priority / s) for priority in priorities]
-        return p
+        p = self._priorities[:self._idx]
+        p = np.power(p, self._alpha)
+        return p / np.sum(p)
 
     def sample(self, batch_size):
         p = self._probabilities()
-        self._p = p
-        indexes = np.random.choice(len(self._buffer), size=batch_size, p=p)
+        s = min(len(self._buffer), batch_size)
+        indexes = np.random.choice(self._idx, size=s, p=p, replace=True)
         return self._sample(indexes)
 
     def push(self, *args):
         t = Transition(*args)
 
-        while len(self) >= self._capacity:
+        if len(self) == self._capacity:
             idx = np.argmin(self._priorities)
-            self._buffer.pop(idx)
-            self._priorities.pop(idx)
-
-        priority = np.max(self._priorities) if len(self._priorities) != 0 \
-                                            else BIG_NUMBER
-        self._buffer.append(t)
-        self._priorities.append(priority)
+            self._buffer[idx] = t
+            self._priorities[idx] = np.max(self._priorities)
+        else:
+            idx = self._idx
+            priority = np.max(self._priorities) if len(self) != 0 else P0
+            self._buffer.append(t)
+            self._priorities[idx] = priority
+            self._idx += 1
