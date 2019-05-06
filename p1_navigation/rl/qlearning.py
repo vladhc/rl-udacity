@@ -165,6 +165,7 @@ class QLearning:
             self._log_scalar('time_other',
                     episode_end_time - episode_start_time \
                             - optimization_time - env_time)
+            self._policy_net.log_scalars(self._log_scalar)
             try:
                 self._log_scalar(
                         'epsilon',

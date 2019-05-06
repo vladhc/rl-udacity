@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn.functional as F
 import torch.nn as nn
 from rl import NoisyLinear
@@ -10,6 +11,21 @@ def linearClass(noisy):
         return NoisyLinear
     else:
         return nn.Linear
+
+
+def _log_noisy(log_fn, tag, layer):
+    try:
+        weight = layer.sigma_weight.data.numpy()
+        log_fn('noise_{}_weights'.format(tag),
+                np.average(np.abs(weight)))
+    except AttributeError:
+        pass
+    try:
+        bias = layer.sigma_bias.data.numpy()
+        log_fn('noise_{}_bias'.format(tag),
+                np.average(np.abs(weight)))
+    except AttributeError:
+        pass
 
 
 class DQNDuelingDense(nn.Module):
@@ -44,6 +60,12 @@ class DQNDuelingDense(nn.Module):
 
         return q
 
+    def log_scalars(self, log_fn):
+        _log_noisy(log_fn, 'value_fc1', self.value_fc1)
+        _log_noisy(log_fn, 'value_fc2', self.value_fc2)
+        _log_noisy(log_fn, 'advantage_fc1', self.advantage_fc1)
+        _log_noisy(log_fn, 'advantage_fc2', self.advantage_fc2)
+
 
 class DQNDense(nn.Module):
 
@@ -61,10 +83,12 @@ class DQNDense(nn.Module):
     def forward(self, x):
         x = x.float()
 
-        x = self.input(x)
-        x = F.leaky_relu(x)
-
+        x = F.leaky_relu(self.input(x))
         x = F.leaky_relu(self.fc1(x))
         q = self.fc2(x)
 
         return q
+
+    def log_scalars(self, log_fn):
+        _log_noisy(log_fn, 'fc1', self.fc1)
+        _log_noisy(log_fn, 'fc2', self.fc2)
