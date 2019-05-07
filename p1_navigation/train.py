@@ -19,11 +19,26 @@ class SpartaWrapper(gym.Wrapper):
         return state, reward, done, debug
 
 
+def createDoneFn(steps, reward):
+    rewards = deque(maxlen=steps)
+
+    def training_done_fn(reward_acc):
+        rewards.append(reward_acc)
+        return np.asarray(rewards).mean() >= reward
+
+    return training_done_fn
+
+
 def createGymEnv(env_id):
     env = gym.make(env_id)
+
+    training_done_fn = lambda x: False
     if env_id == "CartPole-v1":
         env = SpartaWrapper(env)
-    training_done_fn = lambda x: False
+        training_done_fn = createDoneFn(100, 95.0)
+    if env_id == "LunarLander-v2":
+        training_done_fn = createDoneFn(100, 200.0)
+
     return env, training_done_fn
 
 
@@ -31,10 +46,7 @@ def createBananaEnv():
     env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
     env = UnityEnvAdapter(env)
 
-    rewards = deque(maxlen=100)
-    def training_done_fn(reward_acc):
-        rewards.append(reward_acc)
-        return np.asarray(rewards).mean() > 13.0
+    training_done_fn = createDoneFn(100, 14.0)
 
     print("Created Banana environment")
     return env, training_done_fn
@@ -66,7 +78,7 @@ def main(session, env_id, dueling, double, noisy, priority, episodes, seed):
         epsilon_decay=3000,
         batch_size=128,
         gamma=0.99,
-        learning_rate=0.001,
+        learning_rate=0.0001,
         training_done_fn=done_fn,
         replay_buffer_size=100000)
     ql.train(episodes)

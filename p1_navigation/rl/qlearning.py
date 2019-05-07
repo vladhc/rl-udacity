@@ -186,7 +186,11 @@ class QLearning:
         # Increase ReplayBuffer beta parameter 0.4 → 1.0
         # (These numbers are taken from the Rainbow paper)
         beta = 0.4 + (1.0 - 0.4) * (self._i_episode / self._max_episode_steps)
-        self._buffer.set_beta(beta)
+        try:
+            self._buffer.set_beta(beta)
+        except AttributeError:
+            # In case it's not a PriorityReplayBuffer
+            pass
         states, actions, rewards, next_states, ids = self._buffer.sample(
                 self._batch_size)
 
