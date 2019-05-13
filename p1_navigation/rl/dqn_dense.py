@@ -1,9 +1,8 @@
 import numpy as np
+import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from rl import NoisyLinear
-
-HIDDEN_UNITS = 128
 
 
 def linearClass(noisy):
@@ -28,31 +27,62 @@ def _log_noisy(log_fn, tag, layer):
         pass
 
 
-class DQNDuelingDense(nn.Module):
+class DQN(nn.Module):
 
-    def __init__(self, observation_size, action_size, noisy):
-        super(DQNDuelingDense, self).__init__()
-        assert len(observation_size) == 1
+    def __init__(self, observation_size, action_size):
+        super(DQN, self).__init__()
 
-        self.input = nn.Linear(observation_size[0], HIDDEN_UNITS)
+        self.is_dense = len(observation_size) == 1
 
-        linear = linearClass(noisy)
-        n = int(HIDDEN_UNITS/2)
-
-        self.value_fc1 = linear(HIDDEN_UNITS, n)
-        self.value_fc2 = linear(n, 1)
-        self.advantage_fc1 = linear(HIDDEN_UNITS, n)
-        self.advantage_fc2 = linear(n, action_size)
+        if self.is_dense:
+            n = 128
+            self.input = nn.Linear(observation_size[0], n)
+            self.feature_size = n
+        else:
+            self.conv1 = nn.Conv2d(
+                    observation_size[0],
+                    32, kernel_size=8, stride=4)
+            self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+            self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+            self.feature_size = self.conv3(self.conv2(self.conv1(
+                torch.zeros(1, *observation_size)))).view(1, -1).size(1)
 
     def forward(self, x):
-        x = x.float()
+        if self.is_dense:
+            x = x.float()
+            x = F.relu(self.input(x))
+        else:
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            x = x.view(x.size(0), -1)
+        return x
 
-        x = F.leaky_relu(self.input(x))
 
-        value = F.leaky_relu(self.value_fc1(x))
+class DQNDuelingDense(DQN):
+
+    def __init__(
+            self,
+            observation_size,
+            action_size,
+            noisy,
+            hidden_units):
+        super(DQNDuelingDense, self).__init__(observation_size, action_size)
+
+        linear = linearClass(noisy)
+
+        self.value_fc1 = linear(self.feature_size, hidden_units)
+        self.value_fc2 = linear(hidden_units, 1)
+        self.advantage_fc1 = linear(self.feature_size, hidden_units)
+        self.advantage_fc2 = linear(hidden_units, action_size)
+
+    def forward(self, x):
+        x = super(DQNDuelingDense, self).forward(x)
+
+        value = F.relu(self.value_fc1(x))
         value = self.value_fc2(value)
 
-        advantage = F.leaky_relu(self.advantage_fc1(x))
+        advantage = F.relu(self.advantage_fc1(x))
         advantage = self.advantage_fc2(advantage)
 
         q = value.expand_as(advantage) + (advantage -
@@ -67,26 +97,24 @@ class DQNDuelingDense(nn.Module):
         _log_noisy(log_fn, 'advantage_fc2', self.advantage_fc2)
 
 
-class DQNDense(nn.Module):
+class DQNDense(DQN):
 
-    def __init__(self, observation_size, action_size, noisy):
-        super(DQNDense, self).__init__()
-        assert len(observation_size) == 1
+    def __init__(
+            self,
+            observation_size,
+            action_size,
+            noisy,
+            hidden_units):
+        super(DQNDense, self).__init__(observation_size, action_size)
 
         linear = linearClass(noisy)
-
-        self.input = nn.Linear(observation_size[0], HIDDEN_UNITS)
-
-        self.fc1 = linear(HIDDEN_UNITS, HIDDEN_UNITS)
-        self.fc2 = linear(HIDDEN_UNITS, action_size)
+        self.fc1 = linear(self.feature_size, hidden_units)
+        self.fc2 = linear(hidden_units, action_size)
 
     def forward(self, x):
-        x = x.float()
-
-        x = F.leaky_relu(self.input(x))
-        x = F.leaky_relu(self.fc1(x))
+        x = super(DQNDense, self).forward(x)
+        x = F.relu(self.fc1(x))
         q = self.fc2(x)
-
         return q
 
     def log_scalars(self, log_fn):

@@ -27,6 +27,7 @@ class QLearning:
             target_update_freq=10,
             max_episode_steps=200,
             gamma=0.99,
+            hidden_units=128,
             batch_size=128,
             learning_rate=0.001,
             epsilon_start=0.5,
@@ -61,20 +62,24 @@ class QLearning:
             self._policy_net = DQNDuelingDense(
                     observation_shape,
                     action_size,
-                    noisy=noisy)
+                    noisy=noisy,
+                    hidden_units=hidden_units)
             self._target_net = DQNDuelingDense(
                     observation_shape,
                     action_size,
-                    noisy=noisy)
+                    noisy=noisy,
+                    hidden_units=hidden_units)
         else:
             self._policy_net = DQNDense(
                     observation_shape,
                     action_size,
-                    noisy=noisy)
+                    noisy=noisy,
+                    hidden_units=hidden_units)
             self._target_net = DQNDense(
                     observation_shape,
                     action_size,
-                    noisy=noisy)
+                    noisy=noisy,
+                    hidden_units=hidden_units)
 
         self._target_net.train(False)
         self._policy = GreedyPolicy()

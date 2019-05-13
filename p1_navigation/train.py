@@ -3,6 +3,8 @@ import torch
 import numpy as np
 from collections import deque
 
+from baselines.common.atari_wrappers import make_atari, wrap_deepmind
+
 from rl import QLearning, UnityEnvAdapter
 
 from unityagents import UnityEnvironment
@@ -17,6 +19,22 @@ class SpartaWrapper(gym.Wrapper):
         state, reward, done, debug = self.env.step(action)
         reward = -1.0 if done else 0.0
         return state, reward, done, debug
+
+
+class WrapPyTorch(gym.ObservationWrapper):
+
+    def __init__(self, env=None):
+        super(WrapPyTorch, self).__init__(env)
+        obs_shape = self.observation_space.shape
+        self.observation_space = gym.spaces.Box(
+            self.observation_space.low[0, 0, 0],
+            self.observation_space.high[0, 0, 0],
+            [obs_shape[2], obs_shape[1], obs_shape[0]],
+            dtype=self.observation_space.dtype)
+
+    def observation(self, observation):
+        observation = np.array(observation)
+        return observation.transpose(2, 0, 1)
 
 
 def createDoneFn(steps, reward):
@@ -42,22 +60,38 @@ def createGymEnv(env_id):
     return env, training_done_fn
 
 
+def createAtariEnv(env_id):
+    env = make_atari(env_id)
+    env = wrap_deepmind(env,
+            episode_life=True,
+            clip_rewards=True,
+            frame_stack=True,
+            scale=True)
+    env = WrapPyTorch(env)
+    training_done_fn = lambda x: False
+
+    return env, training_done_fn
+
+
 def createBananaEnv():
     env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
     env = UnityEnvAdapter(env)
 
     training_done_fn = createDoneFn(100, 14.0)
 
-    print("Created Banana environment")
     return env, training_done_fn
 
 
 def main(**args):
-    if args['env'] == "banana":
+    env_id = args['env']
+    if env_id == "banana":
         env, done_fn = createBananaEnv()
+    elif env_id == "PongNoFrameskip-v4":
+        env, done_fn = createAtariEnv(env_id)
     else:
-        env, done_fn = createGymEnv(args['env'])
+        env, done_fn = createGymEnv(env_id)
     args['env'] = env
+    print("Created {} environment".format(env_id))
 
     steps = args['steps']
     del args['steps']
@@ -86,6 +120,7 @@ if __name__ == '__main__':
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--learning_rate", type=float, default=0.0001)
     parser.add_argument("--replay_buffer_size", type=int, default=100000)
+    parser.add_argument("--hidden_units", type=int, default=128)
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
