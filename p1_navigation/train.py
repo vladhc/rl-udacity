@@ -52,36 +52,20 @@ def createBananaEnv():
     return env, training_done_fn
 
 
-def main(session, env_id, dueling, double, noisy, priority, episodes, seed):
-    if env_id == "banana":
+def main(**args):
+    if args['env'] == "banana":
         env, done_fn = createBananaEnv()
     else:
-        env, done_fn = createGymEnv(env_id)
+        env, done_fn = createGymEnv(args['env'])
+    args['env'] = env
 
-    # Reproducibility
-    torch.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(seed)
+    steps = args['steps']
+    del args['steps']
 
     ql = QLearning(
-        env,
-        session,
-        dueling=dueling,
-        double=double,
-        noisy=noisy,
-        priority=priority,
-        max_episode_steps=2000,
-        target_update_freq=100,
-        epsilon_start=0.5,
-        epsilon_end=0.01,
-        epsilon_decay=3000,
-        batch_size=128,
-        gamma=0.99,
-        learning_rate=0.0001,
         training_done_fn=done_fn,
-        replay_buffer_size=100000)
-    ql.train(episodes)
+        **args)
+    ql.train(steps)
 
 
 if __name__ == '__main__':
@@ -92,22 +76,22 @@ if __name__ == '__main__':
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true")
     parser.add_argument("--priority", action="store_true")
+    parser.add_argument("--epsilon_decay", type=int, default=3000)
     parser.add_argument("--steps", type=int, default=600)
-    parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument("--max_episode_steps", type=int, default=2000)
+    parser.add_argument("--target_update_freq", type=int, default=100)
+    parser.add_argument("--epsilon_start", type=float, default=0.5)
+    parser.add_argument("--epsilon_end", type=float, default=0.01)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--learning_rate", type=float, default=0.0001)
+    parser.add_argument("--replay_buffer_size", type=int, default=100000)
+
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
     parser.set_defaults(noisy=False)
     parser.set_defaults(priority=False)
     args = parser.parse_args()
 
-    for seed in range(args.seeds):
-        sess_id = "{}-{}".format(args.sess, seed)
-        main(sess_id,
-            env_id=args.env,
-            dueling=args.dueling,
-            double=args.double,
-            noisy=args.noisy,
-            episodes=args.steps,
-            priority=args.priority,
-            seed=seed,
-        )
+    d = vars(args)
+    main(**d)

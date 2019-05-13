@@ -17,7 +17,7 @@ class QLearning:
     def __init__(
             self,
             env,
-            session_id,
+            sess,
             dueling=True,
             double=True,
             noisy=True,
@@ -35,7 +35,7 @@ class QLearning:
 
         self._env = env
         self._double = double
-        self._session_id = session_id
+        self._session_id = sess
         self._training_done_fn = training_done_fn
         self._max_episode_steps = max_episode_steps
         if priority:
