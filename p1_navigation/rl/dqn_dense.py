@@ -49,7 +49,6 @@ class DQN(nn.Module):
 
     def forward(self, x):
         if self.is_dense:
-            x = x.float()
             x = F.relu(self.input(x))
         else:
             x = F.relu(self.conv1(x))

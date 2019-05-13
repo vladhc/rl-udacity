@@ -81,6 +81,11 @@ class QLearning:
                     noisy=noisy,
                     hidden_units=hidden_units)
 
+        self._device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu")
+        self._policy_net.to(self._device)
+        self._target_net.to(self._device)
+
         self._target_net.train(False)
         self._policy = GreedyPolicy()
         if not noisy:
@@ -126,7 +131,8 @@ class QLearning:
             state = self._env.reset()
 
             for t in range(self._max_episode_steps):
-                state_tensor = torch.from_numpy(state).unsqueeze(0)
+                state_tensor = torch.from_numpy(
+                        state).unsqueeze(0).to(self._device)
                 self._policy_net.train(False)
                 with torch.no_grad():
                     q_values = self._policy_net(state_tensor)
@@ -200,25 +206,28 @@ class QLearning:
                 self._batch_size)
 
         # Make Replay Buffer values consumable by PyTorch
-        states = torch.stack([torch.from_numpy(s) for s in states])
+        states = torch.stack([
+            torch.from_numpy(s).to(self._device)
+            for s in states
+        ])
         actions = torch.stack([
-            torch.tensor([a]) for a in actions
+            torch.tensor([a], device=self._device) for a in actions
         ])
         rewards = torch.stack([
-            torch.tensor([r], dtype=torch.float) for r in rewards
+            torch.tensor([r], dtype=torch.float, device=self._device) for r in rewards
         ])
         # For term states the Q value is calculated differently:
         #   Q(term_state) = R
         non_term_mask = torch.tensor(
                 [s is not None for s in next_states],
-                dtype=torch.uint8)
+                dtype=torch.uint8, device=self._device)
         non_term_next_states = [
             next_state
             for next_state in next_states
             if next_state is not None
         ]
         non_term_next_states = torch.stack([
-            torch.from_numpy(next_state)
+            torch.from_numpy(next_state).to(self._device)
             for next_state in non_term_next_states
         ])
 
@@ -232,7 +241,7 @@ class QLearning:
         else:
             next_q_tnet = self._target_net(non_term_next_states).detach()
             next_actions = torch.argmax(next_q_tnet, dim=1).unsqueeze(dim=1)
-        next_q = torch.zeros((self._batch_size, 1))
+        next_q = torch.zeros((self._batch_size, 1), device=self._device)
         next_q[non_term_mask] = self._target_net(non_term_next_states).gather(
                 1, next_actions).detach()  # detach → don't backpropagate
         target_q = rewards + self._gamma * next_q
@@ -242,7 +251,7 @@ class QLearning:
         loss = self._loss_fn(q, target_q)
         try:
             w = self._buffer.importance_sampling_weights(ids)
-            w = torch.from_numpy(w).float()
+            w = torch.from_numpy(w).to(self._device)
             loss = w * loss
         except AttributeError:
             # Not a priority replay buffer
@@ -265,7 +274,7 @@ class QLearning:
         with torch.no_grad():
             buffer_loss = self._buffer_loss_fn(q, target_q)
             buffer_loss = torch.squeeze(buffer_loss)
-            buffer_loss = buffer_loss.numpy()
+            buffer_loss = buffer_loss.cpu().numpy()
             try:
                 self._buffer.update_priorities(ids, buffer_loss)
             except AttributeError:
