@@ -14,15 +14,8 @@ def linearClass(noisy):
 
 def _log_noisy(log_fn, tag, layer):
     try:
-        weight = layer.sigma_weight.data.numpy()
-        log_fn('noise_{}_weights'.format(tag),
-                np.average(np.abs(weight)))
-    except AttributeError:
-        pass
-    try:
-        bias = layer.sigma_bias.data.numpy()
-        log_fn('noise_{}_bias'.format(tag),
-                np.average(np.abs(weight)))
+        weight = layer.sigma_weight.data.cpu().numpy()
+        log_fn('noise_{}'.format(tag), np.average(np.abs(weight)))
     except AttributeError:
         pass
 

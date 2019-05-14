@@ -5,7 +5,7 @@ set -eu
 mkdir -p checkpoints
 mkdir -p train
 
-STEPS=2000
+STEPS=300
 ENV="CartPole-v0"
 
 SESSION="pole-baseline"

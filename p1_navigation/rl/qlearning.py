@@ -22,23 +22,20 @@ class QLearning:
             double=True,
             noisy=True,
             priority=True,
-            training_done_fn=lambda x: False,
             replay_buffer_size=10000,
             target_update_freq=10,
-            max_episode_steps=200,
             gamma=0.99,
             hidden_units=128,
             batch_size=128,
             learning_rate=0.001,
             epsilon_start=0.5,
             epsilon_end=0.1,
+            beta_decay=200,
             epsilon_decay=200):
 
         self._env = env
         self._double = double
         self._session_id = sess
-        self._training_done_fn = training_done_fn
-        self._max_episode_steps = max_episode_steps
         if priority:
             self._buffer = PriorityReplayBuffer(replay_buffer_size)
         else:
@@ -96,109 +93,81 @@ class QLearning:
                     epsilon_end=epsilon_end,
                     epsilon_decay=epsilon_decay)
 
+        self._beta_decay = beta_decay
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
                 lr=learning_rate)
+        self.prev_state = None
 
-        summary_file = "./train/{}".format(self._session_id)
-        shutil.rmtree(summary_file, ignore_errors=True)
-        self._summary_writer = tf.summary.FileWriter(summary_file, None)
-
-    def save_model(self):
-        if self._i_episode % 10 != 0:
-            return
-        filename = 'checkpoins/{}-{}.pth'.format(
-                self._session_id,
-                self._i_episode)
+    def save_model(self, filename):
         torch.save(self._policy_net, filename)
 
-    def train(self, n_episodes):
+    def end_episode(self, reward):
+        self._store_transition(
+                None,
+                reward,
+                True)
+        self.prev_state = None
 
-        for i_episode in range(n_episodes):
+    def _store_transition(self, state, reward, done):
+        if self.prev_state is None:  # beginning of the episode
+            return
+        if done:
+            assert state is None
+        self._buffer.push(
+                self.prev_state,
+                self.prev_action,
+                reward,
+                state)
 
-            # For logging purposes
-            episode_steps = 0
-            q_start = None
-            q_acc = 0.0     # for calculation of q_avg
-            loss_acc = 0.0  # for calculation of loss_avg
-            reward_acc = 0.0
-            episode_start_time = time.time()
-            optimization_time = 0.0  # time spent for optimization
-            env_time = 0.0  # time spent for experience generation
+    def step(self, state, prev_reward, stats):
+        self._store_transition(
+                state,
+                prev_reward,
+                False)
+        self.prev_action = self._action(state, stats)
+        if len(self._buffer) >= self._batch_size:
+            t0 = time.time()  # time spent for optimization
+            self._optimize(stats)
+            stats.set('optimization_time', time.time() - t0)
+        stats.set('replay_buffer_size', len(self._buffer))
+        self.prev_state = state
 
-            self._i_episode = i_episode
-            self.save_model()
-            state = self._env.reset()
+        return self.prev_action
 
-            for t in range(self._max_episode_steps):
-                state_tensor = torch.from_numpy(
-                        state).unsqueeze(0).to(self._device)
-                self._policy_net.train(False)
-                with torch.no_grad():
-                    q_values = self._policy_net(state_tensor)
+    def _action(self, state, stats):
+        state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
+        self._policy_net.train(False)
+        with torch.no_grad():
+            q_values = self._policy_net(state_tensor)
+        action = self._policy.get_action(q_values)
 
-                action = self._policy.get_action(q_values)
-                t0 = time.time()
-                next_state, reward, done, info = self._env.step(action)
-                env_time += (time.time() - t0)
-                if done:
-                    next_state = None
-                self._buffer.push(state, action, reward, next_state)
-                state = next_state
+        # Log Q value
+        q = torch.max(q_values).detach()
+        if self.prev_state is None:
+            stats.set('q_start', q)
+        stats.set('q', q)
+        self._policy_net.log_scalars(stats.set)
 
-                if len(self._buffer) >= self._batch_size:
-                    t0 = time.time()
-                    loss = self._optimize()
-                    optimization_time += time.time() - t0
-                    loss_acc += loss
+        try:
+            stats.set('epsilon', self._policy.get_epsilon())
+        except AttributeError:
+            pass
 
-                # For logging
-                reward_acc += reward
-                q = torch.max(q_values).detach()
-                q_acc += q
-                if q_start is None:
-                    q_start = q
+        return action
 
-                if done:
-                    break
-                episode_steps += 1
-
-            episode_end_time = time.time()
-            self._log_scalar('episode_steps', episode_steps)
-            self._log_scalar('q_start', q_start)
-            self._log_scalar('q_avg', q_acc / episode_steps)
-            self._log_scalar('reward_avg', reward_acc / episode_steps)
-            self._log_scalar('reward', reward_acc)
-            self._log_scalar('loss_avg', loss_acc / episode_steps)
-            self._log_scalar('replay_buffer_size', len(self._buffer))
-            self._log_scalar('time_optimization', optimization_time)
-            self._log_scalar('time_exp', env_time)
-            self._log_scalar('time_other',
-                    episode_end_time - episode_start_time \
-                            - optimization_time - env_time)
-            self._policy_net.log_scalars(self._log_scalar)
-            try:
-                self._log_scalar(
-                        'epsilon',
-                        self._epsilon_greedy_policy.get_epsilon())
-            except AttributeError:
-                pass
-            self._summary_writer.flush()
-
-            if self._training_done_fn(reward_acc):
-                self.save_model()
-                print("Training completed on {} episode".format(i_episode))
-                return
-
-
-    def _optimize(self):
+    def _optimize(self, stats):
         self._policy_net.train(True)
 
         # Increase ReplayBuffer beta parameter 0.4 → 1.0
         # (These numbers are taken from the Rainbow paper)
-        beta = 0.4 + (1.0 - 0.4) * (self._i_episode / self._max_episode_steps)
+        beta0 = 0.4
+        beta1 = 1.0
+        bonus = min(1.0, self._optimization_step / self._beta_decay)
+        beta = beta0 + (beta1 - beta0) * bonus
         try:
             self._buffer.set_beta(beta)
+            stats.set('replay_beta', beta)
         except AttributeError:
             # In case it's not a PriorityReplayBuffer
             pass
@@ -207,7 +176,7 @@ class QLearning:
 
         # Make Replay Buffer values consumable by PyTorch
         states = torch.stack([
-            torch.from_numpy(s).to(self._device)
+            torch.from_numpy(s).float().to(self._device)
             for s in states
         ])
         actions = torch.stack([
@@ -227,7 +196,7 @@ class QLearning:
             if next_state is not None
         ]
         non_term_next_states = torch.stack([
-            torch.from_numpy(next_state).to(self._device)
+            torch.from_numpy(next_state).float().to(self._device)
             for next_state in non_term_next_states
         ])
 
@@ -258,6 +227,8 @@ class QLearning:
             pass
         loss = torch.mean(loss)
 
+        stats.set('loss', loss.detach())
+
         self._optimizer.zero_grad()
         loss.backward()
         for param in self._policy_net.parameters():
@@ -280,10 +251,3 @@ class QLearning:
             except AttributeError:
                 # That's not a priority replay buffer
                 pass
-
-        return loss
-
-    def _log_scalar(self, tag, value):
-        s = tf.Summary(
-                value=[tf.Summary.Value(tag=tag, simple_value=value)])
-        self._summary_writer.add_summary(s, self._i_episode)
