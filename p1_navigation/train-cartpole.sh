@@ -14,6 +14,9 @@ python train.py --sess "$SESSION" --env "$ENV" --steps $STEPS
 SESSION="pole-double"
 python train.py --sess "$SESSION" --env "$ENV" --double --steps $STEPS
 
+SESSION="pole-priority"
+python train.py --sess "$SESSION" --env "$ENV" --priority --steps $STEPS
+
 SESSION="pole-noisy"
 python train.py --sess "$SESSION" --env "$ENV" --noisy --steps $STEPS
 
@@ -31,3 +34,6 @@ python train.py --sess "$SESSION" --env "$ENV" --double --dueling --steps $STEPS
 
 SESSION="pole-double-dueling-noisy"
 python train.py --sess "$SESSION" --env "$ENV" --double --dueling --noisy --steps $STEPS
+
+SESSION="pole-double-dueling-noisy-priority"
+python train.py --sess "$SESSION" --env "$ENV" --double --dueling --noisy --priority --steps $STEPS

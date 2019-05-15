@@ -220,7 +220,7 @@ class QLearning:
         loss = self._loss_fn(q, target_q)
         try:
             w = self._buffer.importance_sampling_weights(ids)
-            w = torch.from_numpy(w).to(self._device)
+            w = torch.from_numpy(w).float().to(self._device)
             loss = w * loss
         except AttributeError:
             # Not a priority replay buffer
