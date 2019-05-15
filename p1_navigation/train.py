@@ -1,4 +1,5 @@
 import argparse
+import math
 import torch
 import numpy as np
 from collections import deque
@@ -19,6 +20,21 @@ class SpartaWrapper(gym.Wrapper):
         state, reward, done, debug = self.env.step(action)
         reward = -1.0 if done else 0.0
         return state, reward, done, debug
+
+
+class WrapNormalizeState(gym.ObservationWrapper):
+
+    def __init__(self, env, min_value, max_value):
+        super(WrapNormalizeState, self).__init__(env)
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def observation(self, observation):
+        x = np.array(observation)
+        x -= self.min_value
+        x /= self.max_value - self.min_value
+        x = 2.0 * x - 1.0  # Rescale in range [-1, 1].
+        return x
 
 
 class WrapPyTorch(gym.ObservationWrapper):
@@ -50,14 +66,12 @@ def createDoneFn(steps, reward):
 def createGymEnv(env_id):
     env = gym.make(env_id)
 
-    training_done_fn = lambda x: False
     if env_id == "CartPole-v1":
-        env = SpartaWrapper(env)
-        training_done_fn = createDoneFn(100, 95.0)
-    if env_id == "LunarLander-v2":
-        training_done_fn = createDoneFn(100, 200.0)
+        min_vals = np.array([-2.4, -5., -math.pi/12., -math.pi*2.])
+        max_vals = np.array([2.4, 5., math.pi/12., math.pi*2.])
+        env = WrapNormalizeState(env, min_vals, max_vals)
 
-    return env, training_done_fn
+    return env
 
 
 def createAtariEnv(env_id):
@@ -69,28 +83,25 @@ def createAtariEnv(env_id):
             frame_stack=True,
             scale=True)
     env = WrapPyTorch(env)
-    training_done_fn = lambda x: False
 
-    return env, training_done_fn
+    return env
 
 
 def createBananaEnv():
     env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
     env = UnityEnvAdapter(env)
 
-    training_done_fn = createDoneFn(100, 14.0)
-
-    return env, training_done_fn
+    return env
 
 
 def main(**args):
     env_id = args['env']
     if env_id == "banana":
-        env, done_fn = createBananaEnv()
+        env = createBananaEnv()
     elif env_id == "PongNoFrameskip-v4":
-        env, done_fn = createAtariEnv(env_id)
+        env = createAtariEnv(env_id)
     else:
-        env, done_fn = createGymEnv(env_id)
+        env = createGymEnv(env_id)
     args['env'] = env
     print("Created {} environment".format(env_id))
 
@@ -111,8 +122,7 @@ def main(**args):
             args['sess'],
             num_iterations=iterations,
             training_steps=training_steps,
-            max_episode_steps=max_episode_steps,
-            training_done_fn=done_fn)
+            max_episode_steps=max_episode_steps)
     runner.run_experiment()
 
 

@@ -19,7 +19,10 @@ def _log_noisy(log_fn, tag, layer):
 
 class DQN(nn.Module):
 
-    def __init__(self, observation_size, action_size):
+    def __init__(
+            self,
+            observation_size,
+            action_size):
         super(DQN, self).__init__()
 
         self.is_dense = len(observation_size) == 1
@@ -56,7 +59,9 @@ class DQNDuelingDense(DQN):
             action_size,
             noisy,
             hidden_units):
-        super(DQNDuelingDense, self).__init__(observation_size, action_size)
+        super(DQNDuelingDense, self).__init__(
+                observation_size,
+                action_size)
 
         linear = linearClass(noisy)
         self._noisy = noisy
@@ -105,7 +110,9 @@ class DQNDense(DQN):
             action_size,
             noisy,
             hidden_units):
-        super(DQNDense, self).__init__(observation_size, action_size)
+        super(DQNDense, self).__init__(
+                observation_size,
+                action_size)
 
         self._noisy = noisy
         linear = linearClass(noisy)
