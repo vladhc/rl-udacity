@@ -28,10 +28,13 @@ class NoisyLinear(nn.Linear):
         nn.init.uniform(self.weight, -std, std)
         nn.init.uniform(self.bias, -std, std)
 
-    def forward(self, input):
+    def sample_noise(self):
         torch.randn(self.epsilon_weight.size(), out=self.epsilon_weight)
+        if self.bias is not None:
+            torch.randn(self.epsilon_bias.size(), out=self.epsilon_bias)
+
+    def forward(self, input):
         bias = self.bias
         if bias is not None:
-            torch.randn(self.epsilon_bias.size(), out=self.epsilon_bias)
             bias = bias + self.sigma_bias * Variable(self.epsilon_bias)
         return F.linear(input, self.weight + self.sigma_weight * Variable(self.epsilon_weight), bias)

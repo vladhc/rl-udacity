@@ -13,11 +13,8 @@ def linearClass(noisy):
 
 
 def _log_noisy(log_fn, tag, layer):
-    try:
-        weight = layer.sigma_weight.data.cpu().numpy()
-        log_fn('noise_{}'.format(tag), np.average(np.abs(weight)))
-    except AttributeError:
-        pass
+    weight = layer.sigma_weight.data.cpu().numpy()
+    log_fn('noise_{}'.format(tag), np.average(np.abs(weight)))
 
 
 class DQN(nn.Module):
@@ -62,6 +59,7 @@ class DQNDuelingDense(DQN):
         super(DQNDuelingDense, self).__init__(observation_size, action_size)
 
         linear = linearClass(noisy)
+        self._noisy = noisy
 
         self.value_fc1 = linear(self.feature_size, hidden_units)
         self.value_fc2 = linear(hidden_units, 1)
@@ -82,7 +80,17 @@ class DQNDuelingDense(DQN):
 
         return q
 
+    def sample_noise(self):
+        if not self._noisy:
+            return
+        self.value_fc1.sample_noise()
+        self.value_fc2.sample_noise()
+        self.advantage_fc1.sample_noise()
+        self.advantage_fc2.sample_noise()
+
     def log_scalars(self, log_fn):
+        if not self._noisy:
+            return
         _log_noisy(log_fn, 'value_fc1', self.value_fc1)
         _log_noisy(log_fn, 'value_fc2', self.value_fc2)
         _log_noisy(log_fn, 'advantage_fc1', self.advantage_fc1)
@@ -99,6 +107,7 @@ class DQNDense(DQN):
             hidden_units):
         super(DQNDense, self).__init__(observation_size, action_size)
 
+        self._noisy = noisy
         linear = linearClass(noisy)
         self.fc1 = linear(self.feature_size, hidden_units)
         self.fc2 = linear(hidden_units, action_size)
@@ -109,6 +118,14 @@ class DQNDense(DQN):
         q = self.fc2(x)
         return q
 
+    def sample_noise(self):
+        if not self._noisy:
+            return
+        self.fc1.sample_noise()
+        self.fc2.sample_noise()
+
     def log_scalars(self, log_fn):
+        if not self._noisy:
+            return
         _log_noisy(log_fn, 'fc1', self.fc1)
         _log_noisy(log_fn, 'fc2', self.fc2)

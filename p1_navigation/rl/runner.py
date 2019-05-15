@@ -88,10 +88,10 @@ class Runner(object):
         num_episodes = 0
         sum_reward = 0
 
+        # training
+        self._agent.eval = False
         while step_count < self._training_steps:
             steps, reward = self._run_one_episode(stats)
-            stats.set('episode_reward', reward)
-            stats.set('episode_steps', reward)
             step_count += steps
             sum_reward += reward
             num_episodes += 1
@@ -103,6 +103,15 @@ class Runner(object):
 
         stats.set('iteration_episodes', num_episodes)
         stats.set('iteration_steps', step_count)
+
+        print("Evaluating...")
+        self._agent.eval = True
+        step_count = 0
+        while step_count < self._training_steps:
+            steps, reward = self._run_one_episode(stats)
+            stats.set('episode_reward', reward)
+            stats.set('episode_steps', steps)
+            step_count += steps
 
         return stats
 
