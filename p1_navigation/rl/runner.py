@@ -5,6 +5,10 @@ import tensorflow as tf
 from rl import Statistics
 import math
 
+from google.cloud import storage
+
+BUCKET = 'rl-1'
+
 
 class Runner(object):
 
@@ -17,7 +21,7 @@ class Runner(object):
             training_steps,
             evaluation_steps,
             max_episode_steps,
-            training_done_fn=lambda x: False):
+            gcp):
 
         self._env = env
         self._agent = agent
@@ -27,9 +31,14 @@ class Runner(object):
         self._training_steps = training_steps
         self._evaluation_steps = evaluation_steps
         self._max_episode_steps = max_episode_steps
-        self._training_done_fn = training_done_fn  # Not used so far
 
-        summary_file = "./train/{}".format(self._session_id)
+        self._bucket = None
+        if gcp:
+            client = storage.Client()
+            self._bucket = client.get_bucket(BUCKET)
+
+        out_dir = 'gs://{}'.format(BUCKET) if gcp else '.'
+        summary_file = '{}/train/{}'.format(out_dir, self._session_id)
         shutil.rmtree(summary_file, ignore_errors=True)
         self._summary_writer = tf.summary.FileWriter(summary_file, None)
 
@@ -78,10 +87,16 @@ class Runner(object):
         self._summary_writer.add_summary(s, self._iteration)
 
     def _checkpoint(self):
-        filename = 'checkpoints/{}-{}.pth'.format(
-                self._session_id,
-                self._iteration)
-        self._agent.save_model(filename)
+        filename = '{}-{}.pth'.format(self._session_id, self._iteration)
+        path = './checkpoints/{}'.format(filename)
+        self._agent.save_model(path)
+        if self._bucket:
+            blob = self._bucket.blob(
+                    'checkpoints/{}'.format(
+                        filename,
+                        self._session_id,
+                        self._iteration))
+            blob.upload_from_filename(filename=path)
 
     def _run_one_iteration(self):
         print("Starting iteration {}".format(self._iteration))

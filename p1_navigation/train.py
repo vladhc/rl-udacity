@@ -14,6 +14,8 @@ def main(**args):
     del args['max_episode_steps']
     evaluation_steps = args['eval_steps']
     del args['eval_steps']
+    gcp = args['gcp']
+    del args['gcp']
 
     sess = args['sess']
     sess_options = ['double', 'priority', 'dueling', 'noisy']
@@ -29,6 +31,7 @@ def main(**args):
             env,
             ql,
             sess,
+            gcp=gcp,
             num_iterations=iterations,
             training_steps=training_steps,
             evaluation_steps=evaluation_steps,
@@ -57,11 +60,13 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate", type=float, default=0.0001)
     parser.add_argument("--replay_buffer_size", type=int, default=100000)
     parser.add_argument("--hidden_units", type=int, default=128)
+    parser.add_argument("--gcp", action="store_true")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
     parser.set_defaults(noisy=False)
     parser.set_defaults(priority=False)
+    parser.set_defaults(gcp=False)
     args = parser.parse_args()
 
     d = vars(args)
