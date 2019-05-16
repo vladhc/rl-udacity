@@ -1,12 +1,11 @@
+import argparse
 import torch
-from rl import UnityEnvAdapter, GreedyPolicy
-from unityagents import UnityEnvironment
+from rl import create_env, GreedyPolicy
 
 
-def main():
-    env = UnityEnvironment(file_name="./Banana_Linux/Banana.x86_64")
-    env = UnityEnvAdapter(env)
-    q_net = torch.load('checkpoint-220.pth')
+def main(env_id, checkpoint):
+    env = create_env(env_id)
+    q_net = torch.load(checkpoint, map_location='cpu')
     q_net.train(False)
 
     while True:
@@ -21,6 +20,7 @@ def play_episode(env, q_net):
         q_values = q_net(state_tensor)
         action = policy.get_action(q_values)
         next_state, reward, done, _ = env.step(action)
+        env.render()
         state = next_state
         reward_acc += reward
         if done:
@@ -29,4 +29,11 @@ def play_episode(env, q_net):
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint")
+    parser.add_argument("--env")
+    parser.add_argument("--iteration", type=int, default=100)
+
+    args = parser.parse_args()
+
+    main(args.env, args.checkpoint)

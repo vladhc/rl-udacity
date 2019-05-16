@@ -5,5 +5,5 @@ from .policy import GreedyPolicy
 from .policy import EpsilonPolicy
 from .dqn_dense import DQNDense, DQNDuelingDense
 from .qlearning import QLearning
-from .adapter import UnityEnvAdapter
 from .runner import Runner
+from .env import create_env
