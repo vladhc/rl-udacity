@@ -12,6 +12,10 @@ class Statistics(object):
         k.append(value)
         self._dict[key] = k
 
+    def set_all(self, key, value):
+        for val in value:
+            self.set(key, val)
+
     def avg(self, key):
         return np.average(self._dict[key])
 
@@ -20,3 +24,9 @@ class Statistics(object):
 
     def max(self, key):
         return max(self._dict[key])
+
+    def count(self, key):
+        return len(self._dict[key])
+
+    def rate(self, key):
+        return self.count(key) / self.sum(key)

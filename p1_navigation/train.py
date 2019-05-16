@@ -111,6 +111,14 @@ def main(**args):
     del args['steps']
     max_episode_steps = args['max_episode_steps']
     del args['max_episode_steps']
+    evaluation_steps = args['eval_steps']
+    del args['eval_steps']
+
+    sess = args['sess']
+    sess_options = ['double', 'priority', 'dueling', 'noisy']
+    for opt in sess_options:
+        if args[opt]:
+            sess += '-' + opt
 
     ql = QLearning(
             beta_decay=(iterations * training_steps),
@@ -119,9 +127,10 @@ def main(**args):
     runner = Runner(
             env,
             ql,
-            args['sess'],
+            sess,
             num_iterations=iterations,
             training_steps=training_steps,
+            evaluation_steps=evaluation_steps,
             max_episode_steps=max_episode_steps)
     runner.run_experiment()
 
@@ -136,6 +145,7 @@ if __name__ == '__main__':
     parser.add_argument("--priority", action="store_true")
     parser.add_argument("--epsilon_decay", type=int, default=3000)
     parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--eval_steps", type=int, default=100)
     parser.add_argument("--iterations", type=int, default=50)
     parser.add_argument("--max_episode_steps", type=int, default=2000)
     parser.add_argument("--target_update_freq", type=int, default=100)
