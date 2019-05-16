@@ -84,7 +84,8 @@ class QLearning:
         self._target_net.to(self._device)
 
         self._target_net.train(False)
-        self._policy = GreedyPolicy()
+        self._greedy_policy = GreedyPolicy()
+        self._policy = self._greedy_policy
         if not noisy:
             self._policy = EpsilonPolicy(
                     self._policy,
@@ -139,12 +140,14 @@ class QLearning:
         return self.prev_action
 
     def _action(self, state, stats):
-        self._sample_noise()
+        if not self.eval:
+            self._sample_noise()
         state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         self._policy_net.train(False)
         with torch.no_grad():
             q_values = self._policy_net(state_tensor)
-        action = self._policy.get_action(q_values)
+        policy = self._greedy_policy if self.eval else self._policy
+        action = policy.get_action(q_values)
 
         if not self.eval:  # During training
             # Do logging
