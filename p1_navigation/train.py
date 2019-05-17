@@ -18,7 +18,7 @@ def main(**args):
     del args['gcp']
 
     sess = args['sess']
-    sess_options = ['double', 'priority', 'dueling', 'noisy']
+    sess_options = ['double', 'priority', 'dueling', 'noisy', 'soft']
     for opt in sess_options:
         if args[opt]:
             sess += '-' + opt
@@ -47,6 +47,7 @@ if __name__ == '__main__':
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true")
     parser.add_argument("--priority", action="store_true")
+    parser.add_argument("--soft", action="store_true")
     parser.add_argument("--epsilon_decay", type=int, default=3000)
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--eval_steps", type=int, default=100)
@@ -61,11 +62,13 @@ if __name__ == '__main__':
     parser.add_argument("--replay_buffer_size", type=int, default=100000)
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--gcp", action="store_true")
+    parser.add_argument("--tau", type=float, default=0.001)
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
     parser.set_defaults(noisy=False)
     parser.set_defaults(priority=False)
+    parser.set_defaults(soft=False)
     parser.set_defaults(gcp=False)
     args = parser.parse_args()
 

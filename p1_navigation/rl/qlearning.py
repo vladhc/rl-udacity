@@ -18,12 +18,14 @@ class QLearning:
             self,
             env,
             sess,
+            soft=True,  # soft update of the target net
             dueling=True,
             double=True,
             noisy=True,
             priority=True,
             replay_buffer_size=10000,
             target_update_freq=10,
+            tau=0.001,
             gamma=0.99,
             hidden_units=128,
             batch_size=128,
@@ -36,18 +38,30 @@ class QLearning:
         self._env = env
         self._double = double
         self._session_id = sess
+        self._batch_size = batch_size
+        self._gamma = gamma
+
+        # Replay buffer
+        self._beta_decay = beta_decay
         if priority:
             self._buffer = PriorityReplayBuffer(replay_buffer_size)
         else:
             self._buffer = ReplayBuffer(replay_buffer_size)
-        self._batch_size = batch_size
-        self._target_update_freq = target_update_freq
-        self._gamma = gamma
-        self._optimization_step = 0
 
-        self._loss_fn = nn.MSELoss(reduce=False)
-        self._buffer_loss_fn = nn.L1Loss(reduce=False)
+        # Target net update
+        self._soft = soft
+        if self._soft:
+            self._tau = tau
+            print(("Target net will be soft-updated with τ={}. " +
+                   "Target_update_frequency parameter is ignored." +
+                   "").format(self._tau))
+        else:
+            self._target_update_freq = target_update_freq
+            print(("Target net will be updated every {} step. " +
+                   "Tau parameter is ignored." +
+                   "").format(self._target_update_freq))
 
+        # Target and Policy networks
         try:
             action_size = env.action_space.n
             observation_shape = env.observation_space.shape
@@ -82,8 +96,9 @@ class QLearning:
                 "cuda" if torch.cuda.is_available() else "cpu")
         self._policy_net.to(self._device)
         self._target_net.to(self._device)
-
         self._target_net.train(False)
+
+        # Policies
         self._greedy_policy = GreedyPolicy()
         self._policy = self._greedy_policy
         if not noisy:
@@ -94,10 +109,16 @@ class QLearning:
                     epsilon_end=epsilon_end,
                     epsilon_decay=epsilon_decay)
 
-        self._beta_decay = beta_decay
+        # Optimizer and loss
+        self._loss_fn = nn.MSELoss(reduce=False)
+        self._buffer_loss_fn = nn.L1Loss(reduce=False)
+
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
                 lr=learning_rate)
+
+        # Variables which change during training
+        self._optimization_step = 0
         self.prev_state = None
         self.eval = False
 
@@ -171,6 +192,18 @@ class QLearning:
         # Resample noise
         self._policy_net.sample_noise()
         self._target_net.sample_noise()
+
+    def _update_target_net(self):
+        if self._soft:
+            for target_param, param in zip(
+                    self._target_net.parameters(),
+                    self._policy_net.parameters()):
+                target_param.data.copy_(
+                        self._tau * param.data +
+                        (1.0 - self._tau)*target_param.data)
+        else:
+            if self._optimization_step % self._target_update_freq == 0:
+                self._target_net.load_state_dict(self._policy_net.state_dict())
 
     def _optimize(self, stats):
         if self.eval:
@@ -257,8 +290,7 @@ class QLearning:
                 param.grad.data.clamp_(-1, 1)
         self._optimizer.step()
 
-        if self._optimization_step % self._target_update_freq == 0:
-            self._target_net.load_state_dict(self._policy_net.state_dict())
+        self._update_target_net()
 
         self._optimization_step += 1
 
