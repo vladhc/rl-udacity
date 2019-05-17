@@ -6,8 +6,9 @@ mkdir -p checkpoints
 mkdir -p train
 
 python train.py \
-  --sess "pong-dqn" \
+  --sess "pong" \
   --env "PongNoFrameskip-v4" \
+  --gcp \
   --steps 1000000 \
   --epsilon_decay 30000 \
   --epsilon_start 1.0 \

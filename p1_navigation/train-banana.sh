@@ -8,5 +8,6 @@ mkdir -p train
 python train.py \
   --double --dueling --noisy --priority \
   --sess banana --env banana \
-  --steps 200 --eval_steps 0 \
+  --gcp \
+  --steps 200 --eval_steps 200 \
   --iterations 4000

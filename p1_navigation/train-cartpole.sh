@@ -12,50 +12,50 @@ SESSION="pole"
 
 python train.py \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --noisy \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --double \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --priority \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --dueling \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --double --noisy \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --dueling --noisy \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --double --dueling \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --double --dueling --noisy \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
 
 python train.py --double --dueling --noisy --priority \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS \
+  --steps $STEPS --gcp \
   --eval_steps $EVAL_STEPS
