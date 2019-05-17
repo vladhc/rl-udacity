@@ -1,11 +1,8 @@
 import time
-import shutil
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-import tensorflow as tf  # for TensorBoard
 
 from rl import DQNDense, DQNDuelingDense
 from rl import ReplayBuffer, PriorityReplayBuffer
@@ -16,8 +13,9 @@ class QLearning:
 
     def __init__(
             self,
-            env,
             sess,
+            action_size,
+            observation_shape,
             soft=True,  # soft update of the target net
             dueling=True,
             double=True,
@@ -35,7 +33,6 @@ class QLearning:
             beta_decay=200,
             epsilon_decay=200):
 
-        self._env = env
         self._double = double
         self._session_id = sess
         self._batch_size = batch_size
@@ -62,13 +59,6 @@ class QLearning:
                    "").format(self._target_update_freq))
 
         # Target and Policy networks
-        try:
-            action_size = env.action_space.n
-            observation_shape = env.observation_space.shape
-        except AttributeError:
-            action_size = env.action_size
-            observation_shape = (env.state_size, )
-
         if dueling:
             self._policy_net = DQNDuelingDense(
                     observation_shape,
@@ -234,7 +224,8 @@ class QLearning:
             torch.tensor([a], device=self._device) for a in actions
         ])
         rewards = torch.stack([
-            torch.tensor([r], dtype=torch.float, device=self._device) for r in rewards
+            torch.tensor([r], dtype=torch.float, device=self._device)
+            for r in rewards
         ])
         # For term states the Q value is calculated differently:
         #   Q(term_state) = R

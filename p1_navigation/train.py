@@ -4,7 +4,7 @@ from rl import QLearning, Runner, create_env
 
 def main(**args):
     env = create_env(args['env'])
-    args['env'] = env
+    del args['env']
 
     iterations = args['iterations']
     del args['iterations']
@@ -23,7 +23,16 @@ def main(**args):
         if args[opt]:
             sess += '-' + opt
 
+    try:
+        action_size = env.action_space.n
+        observation_shape = env.observation_space.shape
+    except AttributeError:
+        action_size = env.action_size
+        observation_shape = (env.state_size, )
+
     ql = QLearning(
+            action_size=action_size,
+            observation_shape=observation_shape,
             beta_decay=(iterations * training_steps),
             **args)
 
