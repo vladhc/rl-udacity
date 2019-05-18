@@ -21,6 +21,7 @@ class QLearning:
             double=True,
             noisy=True,
             priority=True,
+            ref_net=None,
             replay_buffer_size=10000,
             target_update_freq=10,
             train_freq=1,
@@ -93,6 +94,9 @@ class QLearning:
         self._policy_net.to(self._device)
         self._target_net.to(self._device)
         self._target_net.train(False)
+
+        if ref_net is not None:
+            self._ref_net = torch.load(ref_net, map_location='cpu')
 
         # Policies
         self._greedy_policy = GreedyPolicy()
@@ -317,3 +321,19 @@ class QLearning:
             except AttributeError:
                 # That's not a priority replay buffer
                 pass
+
+        # Debugging of Q-values overestimation
+        try:
+            true_next_q = self._ref_net(
+                    non_term_next_states.to('cpu')).detach()
+            true_next_actions = torch.argmax(
+                    true_next_q, dim=1).unsqueeze(dim=1)
+            true_next_v = true_next_q.gather(
+                    1, true_next_actions).to(self._device)
+            q_overestimate = next_q[non_term_mask] - true_next_v
+            stats.set('q_next_overestimate', q_overestimate.mean().detach())
+            stats.set('q_next_err', torch.abs(q_overestimate).mean().detach())
+            stats.set('q_next_err_std', torch.std(q_overestimate).detach())
+        except AttributeError:
+            # No ref_net is set
+            pass

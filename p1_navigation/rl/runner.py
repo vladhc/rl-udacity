@@ -7,8 +7,6 @@ import math
 
 from google.cloud import storage
 
-BUCKET = 'rl-1'
-
 
 class Runner(object):
 
@@ -21,7 +19,7 @@ class Runner(object):
             training_steps,
             evaluation_steps,
             max_episode_steps,
-            gcp):
+            bucket):
 
         self._env = env
         self._agent = agent
@@ -41,12 +39,9 @@ class Runner(object):
         print("Maximum steps per episode: {}".format(
             self._max_episode_steps))
 
-        self._bucket = None
-        if gcp:
-            client = storage.Client()
-            self._bucket = client.get_bucket(BUCKET)
+        self._bucket = bucket
 
-        out_dir = 'gs://{}'.format(BUCKET) if gcp else '.'
+        out_dir = 'gs://{}'.format(bucket.name) if bucket is not None else '.'
         summary_file = '{}/train/{}'.format(out_dir, self._session_id)
         shutil.rmtree(summary_file, ignore_errors=True)
         self._summary_writer = tf.summary.FileWriter(summary_file, None)
@@ -68,6 +63,11 @@ class Runner(object):
         self._log_scalar('replay_buffer_size', stats.max('replay_buffer_size'))
         self._log_scalar('q', stats.avg('q'))
         self._log_scalar('q_start', stats.avg('q_start'))
+        self._log_scalar(
+                'q_next_overestimate',
+                stats.avg('q_next_overestimate'))
+        self._log_scalar('q_next_err', stats.avg('q_next_err'))
+        self._log_scalar('q_next_err_std', stats.avg('q_next_err_std'))
         self._log_scalar('loss', stats.avg('loss'))
         self._log_scalar('epsilon', stats.avg('epsilon'))
         self._log_scalar('steps_per_second_env', stats.rate('env_time'))

@@ -2,6 +2,11 @@ import argparse
 
 from rl import QLearning, Runner, create_env
 
+from google.cloud import storage
+
+BUCKET = 'rl-1'
+
+
 def main(**args):
     env = create_env(args['env'])
     del args['env']
@@ -30,6 +35,21 @@ def main(**args):
         action_size = env.action_size
         observation_shape = (env.state_size, )
 
+    ref_net = args['ref_net']
+
+    bucket = None
+    if gcp:
+        client = storage.Client()
+        bucket = client.get_bucket(BUCKET)
+        if ref_net is not None:
+            if not ref_net.endswith(".pth"):
+                ref_net += ".pth"
+            ref_net = "checkpoints/{}".format(ref_net)
+            args['ref_net'] = ref_net
+            blob = storage.Blob(ref_net, bucket)
+            with open(ref_net, "wb") as f:
+                blob.download_to_file(f)
+
     ql = QLearning(
             action_size=action_size,
             observation_shape=observation_shape,
@@ -40,7 +60,7 @@ def main(**args):
             env,
             ql,
             sess,
-            gcp=gcp,
+            bucket=bucket,
             num_iterations=iterations,
             training_steps=training_steps,
             evaluation_steps=evaluation_steps,
@@ -73,6 +93,11 @@ if __name__ == '__main__':
     parser.add_argument("--gcp", action="store_true")
     parser.add_argument("--tau", type=float, default=0.001)
     parser.add_argument("--train_freq", type=int, default=1)
+    parser.add_argument("--ref_net", type=str,
+        help="Used for debugging of Q values overestimation. " +
+        "This checkpoint should point to an already trained network. " +
+        "The network is used for extimation of V_next* " +
+        "(true next state values).")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
