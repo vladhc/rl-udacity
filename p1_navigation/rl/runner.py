@@ -107,7 +107,6 @@ class Runner(object):
             blob.upload_from_filename(filename=path)
 
     def _run_one_iteration(self):
-        print("Starting iteration {}".format(self._iteration))
         stats = Statistics()
 
         rewards, steps = self._run_one_phase(stats, is_training=True)
@@ -115,7 +114,6 @@ class Runner(object):
         stats.set('training_steps', sum(steps))
 
         if self._evaluation_steps != 0:
-            print("Evaluation...")
             rewards, steps = self._run_one_phase(stats, is_training=False)
             stats.set('eval_episodes', len(steps))
         stats.set_all('episode_reward', rewards)
@@ -134,9 +132,12 @@ class Runner(object):
             steps.append(step)
             rewards.append(reward)
 
-            sys.stdout.write('Steps executed: {} '.format(sum(steps)) +
+            sys.stdout.write('Iteration {} ({}). '.format(
+                                        self._iteration,
+                                        "train" if is_training else "eval") +
+                             'Steps executed: {} '.format(sum(steps)) +
                              'Episode length: {} '.format(steps[-1]) +
-                             'Return: {}\r'.format(rewards[-1]))
+                             'Return: {:.2f}      \r'.format(rewards[-1]))
             sys.stdout.flush()
         print()
         return rewards, steps

@@ -37,8 +37,6 @@ class QLearning:
         print("QLearning agent:")
         self._double = double
         self._session_id = sess
-        self._batch_size = batch_size
-        print("\tBatch size: {}".format(self._batch_size))
         self._gamma = gamma
         print("\tReward discount (gamma): {}".format(self._gamma))
 
@@ -119,6 +117,8 @@ class QLearning:
                 self._policy_net.parameters(),
                 lr=learning_rate)
         print("\tLearning rate: {}".format(learning_rate))
+        self._batch_size = batch_size
+        print("\tBatch size: {}".format(self._batch_size))
         self._train_freq = train_freq
         if self._train_freq != 1:
             print("\tTraining {}will be done every {} step".format(
