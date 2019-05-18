@@ -23,6 +23,7 @@ class QLearning:
             priority=True,
             replay_buffer_size=10000,
             target_update_freq=10,
+            train_freq=1,
             tau=0.001,
             gamma=0.99,
             hidden_units=128,
@@ -118,9 +119,15 @@ class QLearning:
                 self._policy_net.parameters(),
                 lr=learning_rate)
         print("\tLearning rate: {}".format(learning_rate))
+        self._train_freq = train_freq
+        if self._train_freq != 1:
+            print("\tTraining {}will be done every {} step".format(
+                "(including soft-updates of target network) " if soft else "",
+                self._train_freq))
 
         # Variables which change during training
         self._optimization_step = 0
+        self._step = 0
         self.prev_state = None
         self.eval = False
 
@@ -159,6 +166,7 @@ class QLearning:
             stats.set('optimization_time', time.time() - t0)
         stats.set('replay_buffer_size', len(self._buffer))
         self.prev_state = state
+        self._step += 1
 
         return self.prev_action
 
@@ -209,6 +217,8 @@ class QLearning:
 
     def _optimize(self, stats):
         if self.eval:
+            return
+        if self._step % self._train_freq != 0:
             return
         self._policy_net.train(True)
 

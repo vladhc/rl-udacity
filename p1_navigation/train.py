@@ -72,6 +72,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--gcp", action="store_true")
     parser.add_argument("--tau", type=float, default=0.001)
+    parser.add_argument("--train_freq", type=int, default=1)
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
