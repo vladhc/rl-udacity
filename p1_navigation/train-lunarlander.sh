@@ -6,10 +6,20 @@ mkdir -p checkpoints
 mkdir -p train
 
 STEPS=1200
-ITERS=100
+ITERS=400
 EVAL_STEPS=6000
 ENV="LunarLander-v2"
 SESSION="lunar"
+
+
+python train.py --soft \
+  --sess "$SESSION-every4" --env "$ENV" --iterations $ITERS --gcp \
+  --train_freq 4 --learning_rate 0.0004 \
+  --steps $STEPS --eval_steps $EVAL_STEPS
+
+python train.py --soft \
+  --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \
+  --steps $STEPS --eval_steps $EVAL_STEPS
 
 python train.py \
   --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \
@@ -24,10 +34,6 @@ python train.py --double \
   --steps $STEPS --eval_steps $EVAL_STEPS
 
 python train.py --noisy \
-  --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \
-  --steps $STEPS --eval_steps $EVAL_STEPS
-
-python train.py --dueling \
   --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \
   --steps $STEPS --eval_steps $EVAL_STEPS
 

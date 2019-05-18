@@ -45,7 +45,7 @@ class QLearning:
         self._beta_decay = beta_decay
         if priority:
             self._buffer = PriorityReplayBuffer(replay_buffer_size)
-            print("\tPriority replay buffer is used. Beta: {}".format(
+            print("\tPriority replay buffer is used. Beta decay: {}".format(
                 self._beta_decay))
         else:
             self._buffer = ReplayBuffer(replay_buffer_size)
