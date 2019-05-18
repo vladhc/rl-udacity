@@ -32,6 +32,15 @@ class Runner(object):
         self._evaluation_steps = evaluation_steps
         self._max_episode_steps = max_episode_steps
 
+        print("Session ID: {}".format(self._session_id))
+        print("Iterations: {}".format(self._num_iterations))
+        print("Training steps per iteration: {}".format(
+            self._training_steps))
+        print("Evaluation steps per iteration: {}".format(
+            self._evaluation_steps))
+        print("Maximum steps per episode: {}".format(
+            self._max_episode_steps))
+
         self._bucket = None
         if gcp:
             client = storage.Client()
@@ -43,7 +52,6 @@ class Runner(object):
         self._summary_writer = tf.summary.FileWriter(summary_file, None)
 
     def run_experiment(self):
-        print('Starting training...')
         for iteration in range(self._num_iterations):
             self._iteration = (iteration + 1)
             statistics = self._run_one_iteration()
@@ -107,7 +115,7 @@ class Runner(object):
         stats.set('training_steps', sum(steps))
 
         if self._evaluation_steps != 0:
-            print("Evaluating...")
+            print("Evaluation...")
             rewards, steps = self._run_one_phase(stats, is_training=False)
             stats.set('eval_episodes', len(steps))
         stats.set_all('episode_reward', rewards)
@@ -128,8 +136,9 @@ class Runner(object):
 
             sys.stdout.write('Steps executed: {} '.format(sum(steps)) +
                              'Episode length: {} '.format(steps[-1]) +
-                             'Return: {}\n'.format(rewards[-1]))
+                             'Return: {}\r'.format(rewards[-1]))
             sys.stdout.flush()
+        print()
         return rewards, steps
 
     def _run_one_episode(self, stats):

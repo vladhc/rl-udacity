@@ -33,28 +33,35 @@ class QLearning:
             beta_decay=200,
             epsilon_decay=200):
 
+        print("QLearning agent:")
         self._double = double
         self._session_id = sess
         self._batch_size = batch_size
+        print("\tBatch size: {}".format(self._batch_size))
         self._gamma = gamma
+        print("\tReward discount (gamma): {}".format(self._gamma))
 
         # Replay buffer
         self._beta_decay = beta_decay
         if priority:
             self._buffer = PriorityReplayBuffer(replay_buffer_size)
+            print("\tPriority replay buffer is used. Beta: {}".format(
+                self._beta_decay))
         else:
             self._buffer = ReplayBuffer(replay_buffer_size)
+            print("\tBasic replay buffer is used. Beta parameter is ignored.")
+        print("\tReplay buffer size: {}".format(replay_buffer_size))
 
         # Target net update
         self._soft = soft
         if self._soft:
             self._tau = tau
-            print(("Target net will be soft-updated with τ={}. " +
+            print(("\tTarget net will be soft-updated with τ={}. " +
                    "Target_update_frequency parameter is ignored." +
                    "").format(self._tau))
         else:
             self._target_update_freq = target_update_freq
-            print(("Target net will be updated every {} step. " +
+            print(("\tTarget net will be updated every {} step. " +
                    "Tau parameter is ignored." +
                    "").format(self._target_update_freq))
 
@@ -91,7 +98,11 @@ class QLearning:
         # Policies
         self._greedy_policy = GreedyPolicy()
         self._policy = self._greedy_policy
-        if not noisy:
+        if noisy:
+            print("\tNoisyNet is used. Epsilon parameters are ignored.")
+        else:
+            print("\tEpsilon. Start: {}; End: {}; Decay: {}".format(
+                epsilon_start, epsilon_end, epsilon_decay))
             self._policy = EpsilonPolicy(
                     self._policy,
                     action_size,
@@ -106,6 +117,7 @@ class QLearning:
         self._optimizer = optim.Adam(
                 self._policy_net.parameters(),
                 lr=learning_rate)
+        print("\tLearning rate: {}".format(learning_rate))
 
         # Variables which change during training
         self._optimization_step = 0
