@@ -156,7 +156,8 @@ class QLearning:
                 self.prev_state,
                 self.prev_action,
                 reward,
-                state)
+                state,
+                done)
 
     def step(self, state, prev_reward, stats):
         self._store_transition(

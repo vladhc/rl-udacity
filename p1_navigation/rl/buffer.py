@@ -1,10 +1,9 @@
-import torch
 import numpy as np
 from collections import namedtuple
 
 Transition = namedtuple(
         'Transition',
-        ('state', 'action', 'reward', 'next_state'))
+        ('state', 'action', 'reward', 'next_state', 'trajectory_id', 'step'))
 
 
 class ReplayBuffer:
@@ -12,12 +11,28 @@ class ReplayBuffer:
     def __init__(self, capacity):
         self._capacity = capacity
         self._buffer = []
+        self._trajectory_id = 0
+        self._step = 0
 
-    def push(self, *args):
-        t = Transition(*args)
+    def push(self, state, action, reward, next_state, done):
+        t = self._transition(state, action, reward, next_state, done)
         while len(self) >= self._capacity:
             self._buffer.pop(0)
         self._buffer.append(t)
+
+    def _transition(self, state, action, reward, next_state, done):
+        t = Transition(
+                state,
+                action,
+                reward,
+                next_state,
+                self._trajectory_id,
+                self._step)
+        self._step += 1
+        if done:
+            self._trajectory_id += 1
+            self._step = 0
+        return t
 
     def capacity(self):
         return self._capacity
@@ -86,8 +101,8 @@ class PriorityReplayBuffer(ReplayBuffer):
         indexes = np.random.choice(self._idx, size=s, p=p, replace=True)
         return self._sample(indexes)
 
-    def push(self, *args):
-        t = Transition(*args)
+    def push(self, state, action, reward, next_state, done):
+        t = self._transition(state, action, reward, next_state, done)
 
         if len(self) == self._capacity:
             idx = np.argmin(self._priorities)
