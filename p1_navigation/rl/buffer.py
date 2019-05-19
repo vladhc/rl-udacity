@@ -1,59 +1,66 @@
 import numpy as np
-from collections import namedtuple
-
-Transition = namedtuple(
-        'Transition',
-        ('state', 'action', 'reward', 'next_state', 'trajectory_id', 'step'))
 
 
 class ReplayBuffer:
 
-    def __init__(self, capacity):
+    def __init__(self, capacity, observation_shape):
         self._capacity = capacity
-        self._buffer = []
+
+        self._states = np.zeros(
+                (capacity,) + observation_shape, dtype=np.float16)
+        self._next_states = np.zeros(
+                (capacity,) + observation_shape, dtype=np.float16)
+        self._actions = np.zeros(capacity, dtype=np.uint8)
+        self._rewards = np.zeros(capacity, dtype=np.float16)
+        self._term = np.zeros(capacity, dtype=np.uint8)
+        self._trajectory_ids = np.zeros(capacity, dtype=np.uint32)
+
+        self._cursor = 0
+        self._overwrite = False
         self._trajectory_id = 0
-        self._step = 0
 
     def push(self, state, action, reward, next_state, done):
-        t = self._transition(state, action, reward, next_state, done)
-        while len(self) >= self._capacity:
-            self._buffer.pop(0)
-        self._buffer.append(t)
+        idx = self._cursor
 
-    def _transition(self, state, action, reward, next_state, done):
-        t = Transition(
-                state,
-                action,
-                reward,
-                next_state,
-                self._trajectory_id,
-                self._step)
-        self._step += 1
+        self._states[idx] = state
+        self._actions[idx] = action
+        self._rewards[idx] = reward
+        self._next_states[idx] = next_state
+        self._term[idx] = 1 if done else 0
+        self._trajectory_ids[idx] = self._trajectory_id
+
         if done:
             self._trajectory_id += 1
-            self._step = 0
-        return t
+
+        self._cursor += 1
+        if self._cursor >= self._capacity:
+            self._cursor = 0
+            self._overwrite = True
+
+        return idx
 
     def capacity(self):
         return self._capacity
 
     def sample(self, batch_size):
-        batch_size = min(len(self), batch_size)
-        indexes = np.random.choice(
-                len(self._buffer),
-                size=batch_size,
-                replace=True)
+        s = len(self)
+        batch_size = min(s, batch_size)
+        indexes = np.random.choice(s, size=batch_size, replace=True)
         return self._sample(indexes)
 
     def _sample(self, indexes):
-        states = [self._buffer[idx].state for idx in indexes]
-        actions = [self._buffer[idx].action for idx in indexes]
-        rewards = [self._buffer[idx].reward for idx in indexes]
-        next_states = [self._buffer[idx].next_state for idx in indexes]
-        return states, actions, rewards, next_states, indexes
+        states = self._states[indexes]
+        actions = self._actions[indexes]
+        rewards = self._rewards[indexes]
+        next_states = self._next_states[indexes]
+        term = self._term[indexes]
+        return states, actions, rewards, next_states, term, indexes
 
     def __len__(self):
-        return len(self._buffer)
+        if self._overwrite:
+            return self.capacity()
+        else:
+            return self._cursor
 
 
 EPSILON = 0.0001
@@ -62,15 +69,14 @@ P0 = 1.0
 
 class PriorityReplayBuffer(ReplayBuffer):
 
-    def __init__(self, capacity, alpha=0.5, beta=1.0):
+    def __init__(self, capacity, observation_shape, alpha=0.5, beta=1.0):
         """
         alpha: prioritization exponent. How much prioritization is used.
                alpha = 0 → uniform
                alpha = 1 → prioritirized
         beta: Prioritization importance sampling
         """
-        ReplayBuffer.__init__(self, capacity)
-        self._idx = 0
+        ReplayBuffer.__init__(self, capacity, observation_shape)
         self._priorities = np.zeros(capacity, dtype=float)
         self._beta = beta
         self._alpha = alpha
@@ -79,7 +85,7 @@ class PriorityReplayBuffer(ReplayBuffer):
         self._beta = beta
 
     def update_priorities(self, indexes, priorities):
-        priorities = priorities + EPSILON
+        priorities = np.maximum(priorities, EPSILON)
         self._priorities[indexes] = priorities
 
     def importance_sampling_weights(self, indexes):
@@ -91,26 +97,21 @@ class PriorityReplayBuffer(ReplayBuffer):
         return w
 
     def _probabilities(self):
-        p = self._priorities[:self._idx]
+        p = self._priorities[:len(self)]
         p = np.power(p, self._alpha)
         return p / np.sum(p)
 
     def sample(self, batch_size):
-        p = self._probabilities()
-        s = min(len(self._buffer), batch_size)
-        indexes = np.random.choice(self._idx, size=s, p=p, replace=True)
+        indexes = np.random.choice(
+                len(self),
+                size=min(len(self), batch_size),
+                p=self._probabilities(),
+                replace=True)
         return self._sample(indexes)
 
     def push(self, state, action, reward, next_state, done):
-        t = self._transition(state, action, reward, next_state, done)
+        idx = super(PriorityReplayBuffer, self).push(
+                state, action, reward, next_state, done)
 
-        if len(self) == self._capacity:
-            idx = np.argmin(self._priorities)
-            self._buffer[idx] = t
-            self._priorities[idx] = np.max(self._priorities)
-        else:
-            idx = self._idx
-            priority = np.max(self._priorities) if len(self) != 0 else P0
-            self._buffer.append(t)
-            self._priorities[idx] = priority
-            self._idx += 1
+        priority = np.max(self._priorities) if len(self) != 1 else P0
+        self._priorities[idx] = priority

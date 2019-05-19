@@ -44,11 +44,13 @@ class QLearning:
         # Replay buffer
         self._beta_decay = beta_decay
         if priority:
-            self._buffer = PriorityReplayBuffer(replay_buffer_size)
+            self._buffer = PriorityReplayBuffer(
+                    replay_buffer_size, observation_shape)
             print("\tPriority replay buffer is used. Beta decay: {}".format(
                 self._beta_decay))
         else:
-            self._buffer = ReplayBuffer(replay_buffer_size)
+            self._buffer = ReplayBuffer(
+                    replay_buffer_size, observation_shape)
             print("\tBasic replay buffer is used. Beta parameter is ignored.")
         print("\tReplay buffer size: {}".format(replay_buffer_size))
 
@@ -153,11 +155,11 @@ class QLearning:
         if done:
             assert state is None
         self._buffer.push(
-                self.prev_state,
-                self.prev_action,
-                reward,
-                state,
-                done)
+                state=self.prev_state,
+                action=self.prev_action,
+                reward=reward,
+                next_state=state,
+                done=done)
 
     def step(self, state, prev_reward, stats):
         self._store_transition(
@@ -178,7 +180,8 @@ class QLearning:
     def _action(self, state, stats):
         if not self.eval:
             self._sample_noise()
-        state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
+        state_tensor = torch.from_numpy(
+                state).float().unsqueeze(0).to(self._device)
         self._policy_net.train(False)
         with torch.no_grad():
             q_values = self._policy_net(state_tensor)
@@ -201,10 +204,9 @@ class QLearning:
         return action
 
     def _sample_noise(self):
+        # Resample noise only during training
         if self.eval:
             return
-        # During training
-        # Resample noise
         self._policy_net.sample_noise()
         self._target_net.sample_noise()
 
@@ -239,35 +241,21 @@ class QLearning:
         except AttributeError:
             # In case it's not a PriorityReplayBuffer
             pass
-        states, actions, rewards, next_states, ids = self._buffer.sample(
+        states, actions, rewards, next_states, term, ids = self._buffer.sample(
                 self._batch_size)
 
         # Make Replay Buffer values consumable by PyTorch
-        states = torch.stack([
-            torch.from_numpy(s).float().to(self._device)
-            for s in states
-        ])
-        actions = torch.stack([
-            torch.tensor([a], device=self._device) for a in actions
-        ])
-        rewards = torch.stack([
-            torch.tensor([r], dtype=torch.float, device=self._device)
-            for r in rewards
-        ])
+        states = torch.from_numpy(states).float().to(self._device)
+        actions = torch.from_numpy(actions).long().to(self._device)
+        actions = torch.unsqueeze(actions, dim=1)
+        rewards = torch.from_numpy(rewards).float().to(self._device)
+        rewards = torch.unsqueeze(rewards, dim=1)
         # For term states the Q value is calculated differently:
         #   Q(term_state) = R
-        non_term_mask = torch.tensor(
-                [s is not None for s in next_states],
-                dtype=torch.uint8, device=self._device)
-        non_term_next_states = [
-            next_state
-            for next_state in next_states
-            if next_state is not None
-        ]
-        non_term_next_states = torch.stack([
-            torch.from_numpy(next_state).float().to(self._device)
-            for next_state in non_term_next_states
-        ])
+        term_mask = torch.from_numpy(term).to(self._device)
+        term_mask = (1 - term_mask).float()  # 0 -> term
+        term_mask = torch.unsqueeze(term_mask, dim=1)
+        next_states = torch.from_numpy(next_states).float().to(self._device)
 
         # Calculate TD Target
         self._sample_noise()
@@ -275,19 +263,20 @@ class QLearning:
             # Double DQN: use target_net for Q values estimation of the
             # next_state and policy_net for choosing the action
             # in the next_state.
-            next_q_pnet = self._policy_net(non_term_next_states).detach()
+            next_q_pnet = self._policy_net(next_states).detach()
             next_actions = torch.argmax(next_q_pnet, dim=1).unsqueeze(dim=1)
         else:
-            next_q_tnet = self._target_net(non_term_next_states).detach()
+            next_q_tnet = self._target_net(next_states).detach()
             next_actions = torch.argmax(next_q_tnet, dim=1).unsqueeze(dim=1)
         self._sample_noise()
-        next_q = torch.zeros((self._batch_size, 1), device=self._device)
-        next_q[non_term_mask] = self._target_net(non_term_next_states).gather(
+        next_q = self._target_net(next_states).gather(
                 1, next_actions).detach()  # detach → don't backpropagate
+        next_q = next_q * term_mask
+
         target_q = rewards + self._gamma * next_q
 
         self._sample_noise()
-        q = self._policy_net(states).gather(1, actions)
+        q = self._policy_net(states).gather(dim=1, index=actions)
 
         loss = self._loss_fn(q, target_q)
         try:
@@ -326,12 +315,13 @@ class QLearning:
         # Debugging of Q-values overestimation
         try:
             true_next_q = self._ref_net(
-                    non_term_next_states.to('cpu')).detach()
+                    next_states.to('cpu')).detach()
             true_next_actions = torch.argmax(
                     true_next_q, dim=1).unsqueeze(dim=1)
             true_next_v = true_next_q.gather(
                     1, true_next_actions).to(self._device)
-            q_overestimate = next_q[non_term_mask] - true_next_v
+            true_next_v = term_mask * true_next_v
+            q_overestimate = next_q - true_next_v
             stats.set('q_next_overestimate', q_overestimate.mean().detach())
             stats.set('q_next_err', torch.abs(q_overestimate).mean().detach())
             stats.set('q_next_err_std', torch.std(q_overestimate).detach())
