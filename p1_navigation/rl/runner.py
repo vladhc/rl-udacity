@@ -58,10 +58,7 @@ class Runner(object):
         self._agent.save_model(path)
         if self._bucket:
             blob = self._bucket.blob(
-                    'checkpoints/{}'.format(
-                        filename,
-                        self._session_id,
-                        self._iteration))
+                    'checkpoints/{}'.format(filename))
             blob.upload_from_filename(filename=path)
 
     def _run_one_iteration(self):
