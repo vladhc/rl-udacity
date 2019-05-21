@@ -35,7 +35,10 @@ class Statistics(object):
         return len(self._dict[key])
 
     def rate(self, key):
-        return self.count(key) / self.sum(key)
+        s = self.sum(key)
+        if s == 0:
+            return None
+        return self.count(key) / s
 
     def log(self):
         self._log_scalar('episode_reward', self.avg('episode_reward'))

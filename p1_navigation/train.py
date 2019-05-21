@@ -89,6 +89,7 @@ if __name__ == '__main__':
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--learning_rate", type=float, default=0.0001)
     parser.add_argument("--replay_buffer_size", type=int, default=100000)
+    parser.add_argument("--min_replay_buffer_size", type=int, default=128)
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--gcp", action="store_true")
     parser.add_argument("--tau", type=float, default=0.001)

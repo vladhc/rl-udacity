@@ -23,6 +23,7 @@ class QLearning:
             priority=True,
             ref_net=None,
             replay_buffer_size=10000,
+            min_replay_buffer_size=1000,
             target_update_freq=10,
             train_freq=1,
             tau=0.001,
@@ -45,14 +46,19 @@ class QLearning:
         self._beta_decay = beta_decay
         if priority:
             self._buffer = PriorityReplayBuffer(
-                    replay_buffer_size, observation_shape)
+                    capacity=replay_buffer_size,
+                    observation_shape=observation_shape)
             print("\tPriority replay buffer is used. Beta decay: {}".format(
                 self._beta_decay))
         else:
             self._buffer = ReplayBuffer(
-                    replay_buffer_size, observation_shape)
+                    capacity=replay_buffer_size,
+                    observation_shape=observation_shape)
             print("\tBasic replay buffer is used. Beta parameter is ignored.")
         print("\tReplay buffer size: {}".format(replay_buffer_size))
+        self._min_replay_buffer_size = min_replay_buffer_size
+        print("\tAmount of records before training starts: {}".format(
+                self._min_replay_buffer_size))
 
         # Target net update
         self._soft = soft
@@ -167,7 +173,7 @@ class QLearning:
                 prev_reward,
                 False)
         self.prev_action = self._action(state, stats)
-        if len(self._buffer) >= self._batch_size:
+        if len(self._buffer) >= self._min_replay_buffer_size:
             t0 = time.time()  # time spent for optimization
             self._optimize(stats)
             stats.set('optimization_time', time.time() - t0)
