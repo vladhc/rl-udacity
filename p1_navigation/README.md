@@ -21,7 +21,7 @@ Can be seen using TensorBoard:
 
 A couple of training experiments on Banana environment. The blue one is the winner:
 
-![training graph](https://github.com/vladhc/rl-udacity/raw/master/p1_navigation/imgs/episode-reward.png "Training graph")
+![training graph](https://github.com/vladhc/rl-udacity/raw/master/p1_navigation/imgs/banana-reward.png "Banana training graph")
 
 A few lunar lander agents. Gray - only "double" feature is enabled, red - only "dueling", orange - "double, dueling, noisy, soft-updates":
 
