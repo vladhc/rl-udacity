@@ -8,8 +8,8 @@ from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 
 
 def create_env(env_id):
-    if env_id == "banana":
-        env = createBananaEnv()
+    if env_id.startswith("banana"):
+        env = createBananaEnv(render=env_id.endswith("-vis"))
     elif env_id == "PongNoFrameskip-v4":
         env = createAtariEnv(env_id)
     else:
@@ -58,11 +58,12 @@ class WrapPyTorch(gym.ObservationWrapper):
         return observation.transpose(2, 0, 1)
 
 
-def createBananaEnv():
-    env = UnityEnvironment(file_name="./Banana_Linux_NoVis/Banana.x86_64")
-    env = UnityEnvAdapter(env)
+def createBananaEnv(render):
+    f = "./Banana_Linux/Banana.x86_64" if render \
+            else "./Banana_Linux_NoVis/Banana.x86_64"
+    env = UnityEnvironment(file_name=f)
+    return UnityEnvAdapter(env)
 
-    return env
 
 def createAtariEnv(env_id):
     env = make_atari(env_id)
@@ -119,3 +120,6 @@ class UnityEnvAdapter:
         env_info = self._env.reset(train_mode=False)[self._brain_name]
         state = env_info.vector_observations[0]
         return state
+
+    def render(self):
+        return

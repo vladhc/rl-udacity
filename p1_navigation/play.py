@@ -1,6 +1,7 @@
 import argparse
 import torch
 from rl import create_env, GreedyPolicy
+import numpy as np
 
 
 def main(env_id, checkpoint):
@@ -8,15 +9,20 @@ def main(env_id, checkpoint):
     q_net = torch.load(checkpoint, map_location='cpu')
     q_net.train(False)
 
+    rewards = []
     while True:
-        play_episode(env, q_net)
+        reward = play_episode(env, q_net)
+        rewards.append(reward)
+        print("Reward #{}: {}; Average: {}".format(
+            len(rewards), rewards[-1], np.average(rewards)))
+
 
 def play_episode(env, q_net):
     policy = GreedyPolicy()
     state = env.reset()
-    reward_acc = 0
+    reward_acc = 0.0
     while True:
-        state_tensor = torch.from_numpy(state).unsqueeze(0)
+        state_tensor = torch.from_numpy(state).float().unsqueeze(0)
         q_values = q_net(state_tensor)
         action = policy.get_action(q_values)
         next_state, reward, done, _ = env.step(action)
@@ -25,7 +31,7 @@ def play_episode(env, q_net):
         reward_acc += reward
         if done:
             break
-    print("Reward: {}".format(reward_acc))
+    return reward_acc
 
 
 if __name__ == '__main__':

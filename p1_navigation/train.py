@@ -74,25 +74,36 @@ if __name__ == '__main__':
     parser.add_argument("--env")
     parser.add_argument("--dueling", action="store_true")
     parser.add_argument("--double", action="store_true")
-    parser.add_argument("--noisy", action="store_true")
-    parser.add_argument("--priority", action="store_true")
-    parser.add_argument("--soft", action="store_true")
+    parser.add_argument("--noisy", action="store_true",
+            help="Enables noisy network")
+    parser.add_argument("--priority", action="store_true",
+            help="Enables prioritirized replay buffer")
+    parser.add_argument("--soft", action="store_true",
+            help="Enables soft update of target network")
     parser.add_argument("--epsilon_decay", type=int, default=3000)
-    parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--eval_steps", type=int, default=100)
+    parser.add_argument("--steps", type=int, default=100,
+            help="Number of steps for training phase in one iteration")
+    parser.add_argument("--eval_steps", type=int, default=100,
+            help="Number of steps for evaluation phase in one iteration")
     parser.add_argument("--iterations", type=int, default=50)
     parser.add_argument("--max_episode_steps", type=int, default=2000)
-    parser.add_argument("--target_update_freq", type=int, default=100)
+    parser.add_argument("--target_update_freq", type=int, default=100,
+            help="Update target network each N steps")
     parser.add_argument("--epsilon_start", type=float, default=0.5)
     parser.add_argument("--epsilon_end", type=float, default=0.01)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--learning_rate", type=float, default=0.0001)
-    parser.add_argument("--replay_buffer_size", type=int, default=100000)
-    parser.add_argument("--min_replay_buffer_size", type=int, default=128)
+    parser.add_argument("--replay_buffer_size", type=int, default=100000,
+            help="Maximum size of the replay buffer")
+    parser.add_argument("--min_replay_buffer_size", type=int, default=128,
+            help="Size of the replay buffer before optimization starts")
     parser.add_argument("--hidden_units", type=int, default=128)
-    parser.add_argument("--gcp", action="store_true")
-    parser.add_argument("--tau", type=float, default=0.001)
+    parser.add_argument("--gcp", action="store_true",
+            help="Sets if Google Cloud Platform storage bucket should " +
+            "be used for storing training results.")
+    parser.add_argument("--tau", type=float, default=0.001,
+            help="Soft update parameter")
     parser.add_argument("--train_freq", type=int, default=1)
     parser.add_argument("--ref_net", type=str,
         help="Used for debugging of Q values overestimation. " +
