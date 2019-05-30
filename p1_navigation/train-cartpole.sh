@@ -11,6 +11,11 @@ ENV="CartPole-v1"
 EPS_DECAY=12500
 SESSION="pole"
 
+python train.py --agent "reinforce" --gcp \
+  --sess "$SESSION-1" --env "$ENV" \
+  --steps $STEPS --eval_steps $EVAL_STEPS \
+  --iterations 100 --learning_rate 0.00001
+
 python train.py \
   --sess "$SESSION" --env "$ENV" \
   --steps $STEPS --eval_steps $EVAL_STEPS --gcp \

@@ -1,6 +1,7 @@
 import argparse
 
-from rl import QLearning, Runner, create_env
+from rl import Runner, create_env
+from rl import Reinforce, QLearning
 
 from google.cloud import storage
 
@@ -23,10 +24,12 @@ def main(**args):
     del args['gcp']
 
     sess = args['sess']
+    sess += '-' + args['agent']
     sess_options = ['double', 'priority', 'dueling', 'noisy', 'soft']
     for opt in sess_options:
         if args[opt]:
             sess += '-' + opt
+    del args['sess']
 
     try:
         action_size = env.action_space.n
@@ -50,15 +53,27 @@ def main(**args):
             with open(ref_net, "wb") as f:
                 blob.download_to_file(f)
 
-    ql = QLearning(
-            action_size=action_size,
-            observation_shape=observation_shape,
-            beta_decay=(iterations * training_steps),
-            **args)
+    agent_type = args["agent"]
+    del args["agent"]
+
+    if agent_type == "qlearning":
+        agent = QLearning(
+                action_size=action_size,
+                observation_shape=observation_shape,
+                beta_decay=(iterations * training_steps),
+                **args)
+    elif agent_type == "reinforce":
+        gamma = args['gamma']
+        learning_rate = args['learning_rate']
+        agent = Reinforce(
+                action_size=action_size,
+                observation_shape=observation_shape,
+                gamma=gamma,
+                learning_rate=learning_rate)
 
     runner = Runner(
             env,
-            ql,
+            agent,
             sess,
             bucket=bucket,
             num_iterations=iterations,
@@ -72,6 +87,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--sess")
     parser.add_argument("--env")
+    parser.add_argument("--agent", type=str, default="qlearning",
+            help="qlearning|reinforce")
     parser.add_argument("--dueling", action="store_true")
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true",

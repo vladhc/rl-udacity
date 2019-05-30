@@ -4,8 +4,6 @@ import time
 import tensorflow as tf
 from rl import Statistics
 
-from google.cloud import storage
-
 
 class Runner(object):
 
@@ -134,5 +132,5 @@ class Runner(object):
             if done or episode_steps == self._max_episode_steps:
                 break
 
-        self._agent.end_episode(reward)
+        self._agent.end_episode(reward, stats)
         return episode_steps, reward_acc

@@ -12,6 +12,11 @@ ENV="LunarLander-v2"
 SESSION="lunar"
 
 
+python train.py --agent "reinforce" \
+  --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \
+  --learning_rate 0.0002 \
+  --steps $STEPS --eval_steps $EVAL_STEPS
+
 python train.py --soft \
   --sess "$SESSION-every4" --env "$ENV" --iterations $ITERS --gcp \
   --train_freq 4 --learning_rate 0.0004 \

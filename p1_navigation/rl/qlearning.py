@@ -13,7 +13,6 @@ class QLearning:
 
     def __init__(
             self,
-            sess,
             action_size,
             observation_shape,
             soft=True,  # soft update of the target net
@@ -38,7 +37,6 @@ class QLearning:
 
         print("QLearning agent:")
         self._double = double
-        self._session_id = sess
         self._gamma = gamma
         print("\tReward discount (gamma): {}".format(self._gamma))
 
@@ -146,7 +144,7 @@ class QLearning:
     def save_model(self, filename):
         torch.save(self._policy_net, filename)
 
-    def end_episode(self, reward):
+    def end_episode(self, reward, stats):
         self._store_transition(
                 None,
                 reward,
