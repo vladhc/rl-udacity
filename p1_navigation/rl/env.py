@@ -1,5 +1,4 @@
 import gym
-from gym import spaces
 from unityagents import UnityEnvironment
 import numpy as np
 import math
@@ -8,23 +7,14 @@ from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 
 
 def create_env(env_id):
-    if env_id.startswith("banana"):
-        env = createBananaEnv(render=env_id.endswith("-vis"))
+    if env_id.startswith("banana") or env_id.startswith("reacher"):
+        env = createUnityEnv(env_id)
     elif env_id == "PongNoFrameskip-v4":
         env = createAtariEnv(env_id)
     else:
         env = createGymEnv(env_id)
     print("Created {} environment".format(env_id))
     return env
-
-
-class SpartaWrapper(gym.Wrapper):
-
-    def step(self, action):
-        """ Pain only → reward = -1, that's why this is Sparta!!! """
-        state, reward, done, debug = self.env.step(action)
-        reward = -1.0 if done else 0.0
-        return state, reward, done, debug
 
 
 class WrapNormalizeState(gym.ObservationWrapper):
@@ -58,9 +48,16 @@ class WrapPyTorch(gym.ObservationWrapper):
         return observation.transpose(2, 0, 1)
 
 
-def createBananaEnv(render):
-    f = "./Banana_Linux/Banana.x86_64" if render \
-            else "./Banana_Linux_NoVis/Banana.x86_64"
+def createUnityEnv(env_id):
+    if env_id.startswith("banana"):
+        render = env_id.endswith("-vis")
+        f = "Banana_Linux/Banana.x86_64" if render \
+            else "Banana_Linux_NoVis/Banana.x86_64"
+    elif env_id.startswith("reacher"):
+        single = env_id.endswith("-single")
+        f = "Reacher_Linux_single/Reacher.x86_64" if single \
+            else "Reacher_Linux/Reacher.x86_64"
+    f = "environments/{}".format(f)
     env = UnityEnvironment(file_name=f)
     return UnityEnvAdapter(env)
 
@@ -94,32 +91,42 @@ class UnityEnvAdapter:
     def __init__(self, unity_env):
         self._env = unity_env
         self._brain_name = self._env.brain_names[0]
+        print("Unity Environment Adapter:")
+        print("\tUsing brain {}".format(self._brain_name))
 
-        # reset the environment
-        env_info = self._env.reset(train_mode=False)[self._brain_name]
+        # Reset the environment
+        brain_info = self._env.reset(train_mode=False)[self._brain_name]
 
-        # number of actions
+        print("\tNumber of agents: {}".format(len(brain_info.agents)))
+        self._single_agent = len(brain_info.agents) == 1
+
+        # Number of actions
         brain = self._env.brains[self._brain_name]
         self.action_size = brain.vector_action_space_size
-        print('Number of actions:', self.action_size)
-        # examine the state space
-        state = env_info.vector_observations[0]
+        print("\tNumber of actions:", self.action_size)
+
+        # Examine the state space
+        state = brain_info.vector_observations[0]
         self.state_size = len(state)
-        print('State size:', self.state_size)
+        print("\tState size:", self.state_size)
 
     def step(self, action):
         """ return next_state, action, reward, None """
-        env_info = self._env.step(action)[self._brain_name]
-        next_state = env_info.vector_observations[0]
-        reward = env_info.rewards[0]
-        done = env_info.local_done[0]
-        return next_state, reward, done, None
+        brain_info = self._env.step(action)[self._brain_name]
+        next_states = brain_info.vector_observations
+        rewards = brain_info.rewards
+        dones = brain_info.local_done
+        if self._single_agent:
+            return next_states[0], rewards[0], dones[0], None
+        return next_states, rewards, dones, None
 
     def reset(self):
         """ return state """
         env_info = self._env.reset(train_mode=False)[self._brain_name]
-        state = env_info.vector_observations[0]
-        return state
+        states = env_info.vector_observations
+        if self._single_agent:
+            return states[0]
+        return states
 
     def render(self):
         return

@@ -64,6 +64,12 @@ def main(**args):
     agent_type = args["agent"]
     del args["agent"]
 
+    baseline = args["baseline"]
+    del args["baseline"]
+
+    baseline_learning_rate = args["baseline_learning_rate"]
+    del args["baseline_learning_rate"]
+
     if agent_type == "qlearning":
         agent = QLearning(
                 action_size=action_size,
@@ -77,8 +83,8 @@ def main(**args):
                 action_size=action_size,
                 observation_shape=observation_shape,
                 gamma=gamma,
-                baseline=args['baseline'],
-                baseline_learning_rate=args['baseline_learning_rate'],
+                baseline=baseline,
+                baseline_learning_rate=baseline_learning_rate,
                 learning_rate=args['learning_rate'])
 
     runner = Runner(
