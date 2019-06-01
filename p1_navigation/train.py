@@ -35,12 +35,8 @@ def main(**args):
             sess += '-' + opt
     del args['sess']
 
-    try:
-        action_size = env.action_space.n
-        observation_shape = env.observation_space.shape
-    except AttributeError:
-        action_size = env.action_size
-        observation_shape = (env.state_size, )
+    action_size = env.action_space.n
+    observation_shape = env.observation_space.shape
 
     bucket = None
     if gcp:

@@ -4,6 +4,7 @@ import numpy as np
 import math
 
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
+from gym import spaces
 
 
 def create_env(env_id):
@@ -102,13 +103,26 @@ class UnityEnvAdapter:
 
         # Number of actions
         brain = self._env.brains[self._brain_name]
-        self.action_size = brain.vector_action_space_size
-        print("\tNumber of actions:", self.action_size)
+        if brain.vector_action_space_type == 'continuous':
+            self.action_space = spaces.Box(
+                        low=-1.0, high=1.0,
+                        shape=(brain.vector_action_space_size,)
+                    )
+        else:
+            self.action_space = spaces.Discrete(brain.vector_action_space_size)
+        print("\tAction space: {}".format(self.action_space))
 
         # Examine the state space
-        state = brain_info.vector_observations[0]
-        self.state_size = len(state)
-        print("\tState size:", self.state_size)
+        if brain.vector_observation_space_type == 'continuous':
+            print("\tUsing arbitrary 'high' and 'low' values for the " +
+                    "observation space.")
+            self.observation_space = spaces.Box(
+                    low=-100.0, high=100.0,
+                    shape=(brain.vector_observation_space_size,))
+        else:
+            self.observation_space = spaces.Discrete(
+                    brain.vector_observation_space_size)
+        print("\tState shape:", self.observation_space.shape)
 
     def step(self, action):
         """ return next_state, action, reward, None """
