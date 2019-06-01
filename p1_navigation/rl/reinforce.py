@@ -173,6 +173,11 @@ class Reinforce:
         stats.set('loss', loss.detach())
         stats.set('optimization_time', time.time() - t0)
 
+        # Calculate confidence
+        action_probs = torch.nn.Softmax(dim=1)(action_logits)
+        entropy = -(action_probs * action_log_probs).sum(dim=1).mean()
+        stats.set('entropy', entropy.detach())
+
 
 class PolicyBaselineNet(nn.Module):
 

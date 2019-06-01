@@ -36,6 +36,7 @@ class Statistics(object):
             'noise_fc2': (self.avg, 'noise_fc2'),
             'return': (self.avg, 'return'),
             'baseline': (self.avg, 'baseline'),
+            'entropy': (self.avg, 'entropy'),
         }
 
     def set(self, key, value):
