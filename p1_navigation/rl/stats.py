@@ -39,6 +39,7 @@ class Statistics(object):
             'entropy': (self.avg, 'entropy'),
             'grad_max': (self.max, 'grad_max'),
             'grad_mean': (self.avg, 'grad_mean'),
+            'kl': (self.avg, 'kl'),
         }
 
     def set(self, key, value):

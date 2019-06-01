@@ -91,7 +91,7 @@ class Reinforce:
         with torch.no_grad():
             action_logits, _ = self._net(state_tensor)
             action_logits = action_logits.double()
-            action_probs = torch.nn.Softmax()(action_logits)
+            action_probs = torch.nn.Softmax(dim=1)(action_logits)
             action_probs = torch.squeeze(action_probs)
             action_probs = action_probs.detach()
 
@@ -183,6 +183,15 @@ class Reinforce:
             if p.grad is not None:
                 stats.set('grad_max', p.grad.abs().max().detach())
                 stats.set('grad_mean', (p.grad ** 2).mean().sqrt().detach())
+
+        # Log Kullback-Leibler divergence between the new
+        # and the old policy.
+        new_action_logits, _ = self._net(states)
+        new_action_probs = torch.nn.Softmax(dim=1)(new_action_logits)
+        kl = -(
+                (new_action_probs / action_probs).log() * action_probs
+            ).sum(dim=1).mean()
+        stats.set('kl', kl.detach())
 
 
 class PolicyBaselineNet(nn.Module):
