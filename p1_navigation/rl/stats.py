@@ -37,6 +37,8 @@ class Statistics(object):
             'return': (self.avg, 'return'),
             'baseline': (self.avg, 'baseline'),
             'entropy': (self.avg, 'entropy'),
+            'grad_max': (self.max, 'grad_max'),
+            'grad_mean': (self.avg, 'grad_mean'),
         }
 
     def set(self, key, value):

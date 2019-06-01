@@ -173,10 +173,16 @@ class Reinforce:
         stats.set('loss', loss.detach())
         stats.set('optimization_time', time.time() - t0)
 
-        # Calculate confidence
+        # Log entropy metric (opposite to confidence)
         action_probs = torch.nn.Softmax(dim=1)(action_logits)
         entropy = -(action_probs * action_log_probs).sum(dim=1).mean()
         stats.set('entropy', entropy.detach())
+
+        # Log gradients
+        for p in self._net.parameters():
+            if p.grad is not None:
+                stats.set('grad_max', p.grad.abs().max().detach())
+                stats.set('grad_mean', (p.grad ** 2).mean().sqrt().detach())
 
 
 class PolicyBaselineNet(nn.Module):
