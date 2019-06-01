@@ -98,7 +98,7 @@ class UnityEnvAdapter:
         brain_info = self._env.reset(train_mode=False)[self._brain_name]
 
         print("\tNumber of agents: {}".format(len(brain_info.agents)))
-        self._single_agent = len(brain_info.agents) == 1
+        self.single_agent = len(brain_info.agents) == 1
 
         # Number of actions
         brain = self._env.brains[self._brain_name]
@@ -116,7 +116,7 @@ class UnityEnvAdapter:
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
         dones = brain_info.local_done
-        if self._single_agent:
+        if self.single_agent:
             return next_states[0], rewards[0], dones[0], None
         return next_states, rewards, dones, None
 
@@ -124,7 +124,7 @@ class UnityEnvAdapter:
         """ return state """
         env_info = self._env.reset(train_mode=False)[self._brain_name]
         states = env_info.vector_observations
-        if self._single_agent:
+        if self.single_agent:
             return states[0]
         return states
 

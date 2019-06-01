@@ -101,8 +101,17 @@ class Runner(object):
         episode_steps = 0
         reward_acc = 0.0
 
+        single_agent = True
+        try:
+            single_agent = self._env.signle_agent
+        except AttributeError:
+            pass
+
         state = self._env.reset()
-        reward = None
+        if single_agent:
+            reward = None
+        else:
+            reward = [None for idx in range(len(state))]
 
         is_training = not self._agent.eval
 
@@ -110,7 +119,18 @@ class Runner(object):
             step_time0 = time.time()
 
             t0 = time.time()
-            action = self._agent.step(state, reward, stats)
+            if single_agent:
+                action = self._agent.step(state, reward, stats)
+            else:
+                action = [
+                        self._agent.step(
+                            state[idx],
+                            reward[idx],
+                            stats,
+                            traj_id=idx)
+                        for idx in range(len(state))
+                ]
+
             if is_training:
                 stats.set('agent_time', time.time() - t0)
 
@@ -132,5 +152,11 @@ class Runner(object):
             if done or episode_steps == self._max_episode_steps:
                 break
 
-        self._agent.end_episode(reward, stats)
+        if single_agent:
+            self._agent.end_episode(reward, stats)
+        else:
+            [
+                    self._agent.end_episode(reward[idx], stats, traj_id=idx)
+                    for idx in range(len(reward))
+            ]
         return episode_steps, reward_acc

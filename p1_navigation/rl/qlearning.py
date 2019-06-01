@@ -144,7 +144,7 @@ class QLearning:
     def save_model(self, filename):
         torch.save(self._policy_net, filename)
 
-    def end_episode(self, reward, stats):
+    def end_episode(self, reward, stats, traj_id=0):
         self._store_transition(
                 None,
                 reward,
@@ -165,7 +165,7 @@ class QLearning:
                 next_state=state,
                 done=done)
 
-    def step(self, state, prev_reward, stats):
+    def step(self, state, prev_reward, stats, traj_id=0):
         self._store_transition(
                 state,
                 prev_reward,

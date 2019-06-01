@@ -69,14 +69,14 @@ class Reinforce:
             self.prev_action,
             reward))
 
-    def end_episode(self, reward, stats):
+    def end_episode(self, reward, stats, traj_id=0):
         self._store_transition(reward)
         self.prev_state = None
         if not self.eval:
             self._optimize(stats)
         self._trajectory = []
 
-    def step(self, state, prev_reward, stats):
+    def step(self, state, prev_reward, stats, traj_id=0):
         self._store_transition(prev_reward)
         action = self._action(state)
         self.prev_action = action
