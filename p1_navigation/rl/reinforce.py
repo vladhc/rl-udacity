@@ -13,6 +13,8 @@ class Reinforce:
             action_size,
             observation_shape,
             gamma=0.99,
+            baseline=False,
+            baseline_learning_rate=0.001,
             learning_rate=0.001):
 
         print("REINFORCE agent:")
@@ -21,11 +23,19 @@ class Reinforce:
         self._gamma = gamma
         print("\tReward discount (gamma): {}".format(self._gamma))
 
+        self._device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu")
+
+        self._baseline_net = None
+        if baseline:
+            print("\tState-Value network will be created for " +
+                    "providing baseline.")
+            self._baseline_net = StateValueNet(observation_shape)
+            self._baseline_net.to(self._device)
+
         self._policy_net = PolicyNet(
                 observation_shape,
                 action_size)
-        self._device = torch.device(
-                "cuda" if torch.cuda.is_available() else "cpu")
         self._policy_net.to(self._device)
 
         # Optimizer and loss
@@ -34,6 +44,13 @@ class Reinforce:
                 self._policy_net.parameters(),
                 lr=learning_rate)
         print("\tLearning rate: {}".format(learning_rate))
+
+        if baseline:
+            self._baseline_optimizer = optim.Adam(
+                    self._baseline_net.parameters(),
+                    lr=baseline_learning_rate)
+            print("\tLearning rate for baseline network: {}".format(
+                baseline_learning_rate))
 
         # Variables which change during training
         self.prev_state = None
@@ -107,13 +124,30 @@ class Reinforce:
             gamma = np.power(self._gamma, t)
             gammas[t] = gamma
 
-        self._optimizer.zero_grad()
         states = torch.from_numpy(states).float().to(self._device)
+        gs = torch.from_numpy(gs).float().to(self._device)
+        gs = torch.unsqueeze(gs, dim=1)
         actions = torch.from_numpy(actions).long().to(self._device)
         actions = torch.unsqueeze(actions, dim=1)
 
-        gs = torch.from_numpy(gs).float().to(self._device)
-        gs = torch.unsqueeze(gs, dim=1)
+        if self._baseline_net:
+            v = self._baseline_net(states)
+            baseline_loss = self._loss_fn(v, gs)
+            baseline_loss = torch.mean(baseline_loss)
+
+            self._baseline_optimizer.zero_grad()
+            baseline_loss.backward()
+            self._baseline_optimizer.step()
+
+            with torch.no_grad():
+                baselines = self._baseline_net(states).detach()
+            stats.set('baseline', baselines.mean())
+        else:
+            baselines = torch.from_numpy(
+                    np.zeros(batch_size, dtype=np.float16))
+        baselines = baselines.float().to(self._device)
+
+        stats.set('return', gs.mean().detach())
 
         gammas = torch.from_numpy(gammas).float().to(self._device)
         gammas = torch.unsqueeze(gammas, dim=1)
@@ -127,10 +161,11 @@ class Reinforce:
         # -1 here because optimizer is going to *minimize* the
         # loss. If we were going to update the weights manually,
         # (without optimizer) we would remove the -1.
-        loss = -1 * gammas * gs * action_log_probs
+        loss = -1 * gammas * (gs - baselines) * action_log_probs
         loss = loss.mean()
-        loss.backward()
 
+        self._optimizer.zero_grad()
+        loss.backward()
         self._optimizer.step()
 
         stats.set('loss', loss.detach())
@@ -176,3 +211,43 @@ class PolicyNet(nn.Module):
         x = F.relu(self.fc1(x))
         a_logits = self.fc2(x)
         return a_logits
+
+
+class StateValueNet(nn.Module):
+
+    def __init__(
+            self,
+            observation_size):
+        super(StateValueNet, self).__init__()
+
+        self.is_dense = len(observation_size) == 1
+
+        hidden_units = 128
+
+        if self.is_dense:
+            self.input = nn.Linear(observation_size[0], hidden_units)
+            self.feature_size = hidden_units
+        else:
+            self.conv1 = nn.Conv2d(
+                    observation_size[0],
+                    32, kernel_size=8, stride=4)
+            self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+            self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+            self.feature_size = self.conv3(self.conv2(self.conv1(
+                torch.zeros(1, *observation_size)))).view(1, -1).size(1)
+
+        self.fc1 = nn.Linear(hidden_units, hidden_units)
+        self.fc2 = nn.Linear(hidden_units, 1)
+
+    def forward(self, x):
+        if self.is_dense:
+            x = F.relu(self.input(x))
+        else:
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            x = x.view(x.size(0), -1)
+
+        x = F.relu(self.fc1(x))
+        v = self.fc2(x)
+        return v

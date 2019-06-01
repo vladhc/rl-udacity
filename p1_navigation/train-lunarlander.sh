@@ -11,6 +11,11 @@ EVAL_STEPS=6000
 ENV="LunarLander-v2"
 SESSION="lunar"
 
+python train.py --agent "reinforce" --baseline \
+  --sess "$SESSION-2" --env "$ENV" --iterations $ITERS \
+  --learning_rate 0.0002 \
+  --baseline_learning_rate 0.0002 \
+  --steps $STEPS --eval_steps $EVAL_STEPS
 
 python train.py --agent "reinforce" \
   --sess "$SESSION" --env "$ENV" --iterations $ITERS --gcp \

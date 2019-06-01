@@ -5,6 +5,8 @@ from rl import Reinforce, QLearning
 
 from google.cloud import storage
 
+import torch
+
 BUCKET = 'rl-1'
 
 
@@ -25,7 +27,9 @@ def main(**args):
 
     sess = args['sess']
     sess += '-' + args['agent']
-    sess_options = ['double', 'priority', 'dueling', 'noisy', 'soft']
+    sess_options = [
+            'double', 'priority', 'dueling',
+            'noisy', 'soft', 'baseline']
     for opt in sess_options:
         if args[opt]:
             sess += '-' + opt
@@ -38,20 +42,24 @@ def main(**args):
         action_size = env.action_size
         observation_shape = (env.state_size, )
 
-    ref_net = args['ref_net']
-
     bucket = None
     if gcp:
         client = storage.Client()
         bucket = client.get_bucket(BUCKET)
-        if ref_net is not None:
-            if not ref_net.endswith(".pth"):
-                ref_net += ".pth"
-            ref_net = "checkpoints/{}".format(ref_net)
-            args['ref_net'] = ref_net
+
+    ref_net = args['ref_net']
+    del args['ref_net']
+    if ref_net is not None:
+        if not ref_net.endswith(".pth"):
+            ref_net += ".pth"
+        ref_net = "checkpoints/{}".format(ref_net)
+
+        if gcp:
             blob = storage.Blob(ref_net, bucket)
             with open(ref_net, "wb") as f:
                 blob.download_to_file(f)
+        print("Loading ref_net from {}".format(ref_net))
+        ref_net = torch.load(ref_net, map_location='cpu')
 
     agent_type = args["agent"]
     del args["agent"]
@@ -61,15 +69,17 @@ def main(**args):
                 action_size=action_size,
                 observation_shape=observation_shape,
                 beta_decay=(iterations * training_steps),
+                ref_net=ref_net,
                 **args)
     elif agent_type == "reinforce":
         gamma = args['gamma']
-        learning_rate = args['learning_rate']
         agent = Reinforce(
                 action_size=action_size,
                 observation_shape=observation_shape,
                 gamma=gamma,
-                learning_rate=learning_rate)
+                baseline=args['baseline'],
+                baseline_learning_rate=args['baseline_learning_rate'],
+                learning_rate=args['learning_rate'])
 
     runner = Runner(
             env,
@@ -97,6 +107,8 @@ if __name__ == '__main__':
             help="Enables prioritirized replay buffer")
     parser.add_argument("--soft", action="store_true",
             help="Enables soft update of target network")
+    parser.add_argument("--baseline", action="store_true",
+            help="Enables baseline for the REINFORCE agent.")
     parser.add_argument("--epsilon_decay", type=int, default=3000)
     parser.add_argument("--steps", type=int, default=100,
             help="Number of steps for training phase in one iteration")
@@ -111,6 +123,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--learning_rate", type=float, default=0.0001)
+    parser.add_argument("--baseline_learning_rate", type=float, default=0.0001)
     parser.add_argument("--replay_buffer_size", type=int, default=100000,
             help="Maximum size of the replay buffer")
     parser.add_argument("--min_replay_buffer_size", type=int, default=128,
@@ -133,6 +146,7 @@ if __name__ == '__main__':
     parser.set_defaults(noisy=False)
     parser.set_defaults(priority=False)
     parser.set_defaults(soft=False)
+    parser.set_defaults(baseline=False)
     parser.set_defaults(gcp=False)
     args = parser.parse_args()
 

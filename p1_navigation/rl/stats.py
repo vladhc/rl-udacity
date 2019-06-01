@@ -34,6 +34,8 @@ class Statistics(object):
             'noise_advantage_fc2': (self.avg, 'noise_advantage_fc2'),
             'noise_fc1': (self.avg, 'noise_fc1'),
             'noise_fc2': (self.avg, 'noise_fc2'),
+            'return': (self.avg, 'return'),
+            'baseline': (self.avg, 'baseline'),
         }
 
     def set(self, key, value):

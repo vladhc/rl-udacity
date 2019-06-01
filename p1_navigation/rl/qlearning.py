@@ -102,7 +102,7 @@ class QLearning:
         self._target_net.train(False)
 
         if ref_net is not None:
-            self._ref_net = torch.load(ref_net, map_location='cpu')
+            self._ref_net = ref_net
 
         # Policies
         self._greedy_policy = GreedyPolicy()
