@@ -1,7 +1,7 @@
 import argparse
 
 from rl import Runner, create_env
-from rl import Reinforce, QLearning
+from rl import Reinforce, QLearning, ActorCritic
 
 from google.cloud import storage
 
@@ -66,22 +66,35 @@ def main(**args):
     baseline_learning_rate = args["baseline_learning_rate"]
     del args["baseline_learning_rate"]
 
+    gamma = args["gamma"]
+    del args["gamma"]
+
+    learning_rate = args["learning_rate"]
+    del args["learning_rate"]
+
     if agent_type == "qlearning":
         agent = QLearning(
                 action_size=action_size,
                 observation_shape=observation_shape,
                 beta_decay=(iterations * training_steps),
                 ref_net=ref_net,
+                gamma=gamma,
+                learning_rate=learning_rate,
                 **args)
     elif agent_type == "reinforce":
-        gamma = args['gamma']
         agent = Reinforce(
                 action_size=action_size,
                 observation_shape=observation_shape,
                 gamma=gamma,
+                learning_rate=learning_rate,
                 baseline=baseline,
-                baseline_learning_rate=baseline_learning_rate,
-                learning_rate=args['learning_rate'])
+                baseline_learning_rate=baseline_learning_rate)
+    elif agent_type == "actor-critic":
+        agent = ActorCritic(
+                action_size=action_size,
+                observation_shape=observation_shape,
+                gamma=gamma,
+                learning_rate=learning_rate)
 
     runner = Runner(
             env,
@@ -100,7 +113,7 @@ if __name__ == '__main__':
     parser.add_argument("--sess")
     parser.add_argument("--env")
     parser.add_argument("--agent", type=str, default="qlearning",
-            help="qlearning|reinforce")
+            help="qlearning|reinforce|actor-critic")
     parser.add_argument("--dueling", action="store_true")
     parser.add_argument("--double", action="store_true")
     parser.add_argument("--noisy", action="store_true",

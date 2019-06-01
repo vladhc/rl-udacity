@@ -11,22 +11,27 @@ ENV="CartPole-v1"
 EPS_DECAY=12500
 SESSION="pole"
 
-python train.py --agent "reinforce" --gcp \
+python train.py --agent "actor-critic" \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS --eval_steps $EVAL_STEPS \
-  --iterations 100 --learning_rate 0.00002
+  --steps $STEPS --eval_steps $EVAL_STEPS --gcp \
+  --iterations 100 --learning_rate 0.0001
+
+python train.py --agent "reinforce" \
+  --sess "$SESSION" --env "$ENV" \
+  --steps $STEPS --eval_steps $EVAL_STEPS --gcp \
+  --iterations 100 --learning_rate 0.001
 
 python train.py --agent "reinforce" --baseline \
   --sess "$SESSION" --env "$ENV" \
-  --steps $STEPS --eval_steps $EVAL_STEPS \
-  --baseline_learning_rate 0.0002 \
-  --iterations 100 --learning_rate 0.00002
+  --steps $STEPS --eval_steps $EVAL_STEPS --gcp \
+  --baseline_learning_rate 0.004 \
+  --iterations 100 --learning_rate 0.001
 
 python train.py \
   --sess "$SESSION" --env "$ENV" \
   --steps $STEPS --eval_steps $EVAL_STEPS --gcp \
   --epsilon_end 0.01 --epsilon_decay $EPS_DECAY \
-  --ref_net "pole-ref" --iterations 100 --learning_rate 0.0001
+  --iterations 100 --learning_rate 0.0001
 
 python train.py \
   --sess "$SESSION-every4" --env "$ENV" \
