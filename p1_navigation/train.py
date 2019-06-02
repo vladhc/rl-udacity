@@ -11,19 +11,13 @@ BUCKET = 'rl-1'
 
 
 def main(**args):
-    env = create_env(args['env'])
-    del args['env']
+    env = create_env(args['env'], args['env_count'])
 
     iterations = args['iterations']
-    del args['iterations']
     training_steps = args['steps']
-    del args['steps']
     max_episode_steps = args['max_episode_steps']
-    del args['max_episode_steps']
     evaluation_steps = args['eval_steps']
-    del args['eval_steps']
     gcp = args['gcp']
-    del args['gcp']
 
     sess = args['sess']
     sess += '-' + args['agent']
@@ -33,7 +27,6 @@ def main(**args):
     for opt in sess_options:
         if args[opt]:
             sess += '-' + opt
-    del args['sess']
 
     action_size = env.action_space.n
     observation_shape = env.observation_space.shape
@@ -44,7 +37,6 @@ def main(**args):
         bucket = client.get_bucket(BUCKET)
 
     ref_net = args['ref_net']
-    del args['ref_net']
     if ref_net is not None:
         if not ref_net.endswith(".pth"):
             ref_net += ".pth"
@@ -58,19 +50,10 @@ def main(**args):
         ref_net = torch.load(ref_net, map_location='cpu')
 
     agent_type = args["agent"]
-    del args["agent"]
-
     baseline = args["baseline"]
-    del args["baseline"]
-
     baseline_learning_rate = args["baseline_learning_rate"]
-    del args["baseline_learning_rate"]
-
     gamma = args["gamma"]
-    del args["gamma"]
-
     learning_rate = args["learning_rate"]
-    del args["learning_rate"]
 
     if agent_type == "qlearning":
         agent = QLearning(
@@ -110,8 +93,9 @@ def main(**args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sess")
-    parser.add_argument("--env")
+    parser.add_argument("--sess", type=str)
+    parser.add_argument("--env", type=str)
+    parser.add_argument("--env_count", type=int, default=1)
     parser.add_argument("--agent", type=str, default="qlearning",
             help="qlearning|reinforce|actor-critic")
     parser.add_argument("--dueling", action="store_true")

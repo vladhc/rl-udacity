@@ -3,19 +3,58 @@ from unityagents import UnityEnvironment
 import numpy as np
 import math
 
-from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from gym import spaces
 
 
-def create_env(env_id):
+def create_env(env_id, count=1):
     if env_id.startswith("banana") or env_id.startswith("reacher"):
         env = createUnityEnv(env_id)
-    elif env_id == "PongNoFrameskip-v4":
-        env = createAtariEnv(env_id)
     else:
-        env = createGymEnv(env_id)
+        env = MultiGymEnv(env_id, count=count)
     print("Created {} environment".format(env_id))
     return env
+
+
+class MultiGymEnv(object):
+
+    def __init__(self, env_id, count):
+        assert count > 0
+        self.n_agents = count
+        self._envs = [createGymEnv(env_id) for _ in range(count)]
+        self.action_space = self._envs[0].action_space
+        self.observation_space = self._envs[0].observation_space
+
+    def step(self, actions):
+        next_states = []
+        rewards = []
+        dones = []
+
+        envs = [env for env in self._envs if not self._skip[env]]
+
+        for action, env in zip(actions, envs):
+            next_state, reward, done, _ = env.step(action)
+            next_states.append(next_state)
+            rewards.append(reward)
+            dones.append(done)
+            self._skip[env] = done
+
+        states = self.states
+        rewards = np.asarray(rewards)
+        dones = np.asarray(dones)
+        next_states = np.asarray(next_states)
+        self.states = next_states[~dones]
+        return states, actions, rewards, next_states, dones
+
+    def reset(self):
+        self._skip = {env: False for env in self._envs}
+        states = [env.reset() for env in self._envs]
+        self.episodes_count = 0
+        self.states = np.asarray(states)
+        return self.states
+
+    def render(self):
+        if len(self._env) == 1:
+            self._env.render()
 
 
 class WrapNormalizeState(gym.ObservationWrapper):
@@ -33,22 +72,6 @@ class WrapNormalizeState(gym.ObservationWrapper):
         return x
 
 
-class WrapPyTorch(gym.ObservationWrapper):
-
-    def __init__(self, env=None):
-        super(WrapPyTorch, self).__init__(env)
-        obs_shape = self.observation_space.shape
-        self.observation_space = gym.spaces.Box(
-            self.observation_space.low[0, 0, 0],
-            self.observation_space.high[0, 0, 0],
-            [obs_shape[2], obs_shape[1], obs_shape[0]],
-            dtype=self.observation_space.dtype)
-
-    def observation(self, observation):
-        observation = np.array(observation)
-        return observation.transpose(2, 0, 1)
-
-
 def createUnityEnv(env_id):
     if env_id.startswith("banana"):
         render = env_id.endswith("-vis")
@@ -61,19 +84,6 @@ def createUnityEnv(env_id):
     f = "environments/{}".format(f)
     env = UnityEnvironment(file_name=f)
     return UnityEnvAdapter(env)
-
-
-def createAtariEnv(env_id):
-    env = make_atari(env_id)
-    env = wrap_deepmind(
-            env,
-            episode_life=True,
-            clip_rewards=True,
-            frame_stack=True,
-            scale=True)
-    env = WrapPyTorch(env)
-
-    return env
 
 
 def createGymEnv(env_id):
@@ -99,7 +109,7 @@ class UnityEnvAdapter:
         brain_info = self._env.reset(train_mode=False)[self._brain_name]
 
         print("\tNumber of agents: {}".format(len(brain_info.agents)))
-        self.single_agent = len(brain_info.agents) == 1
+        self.n_agents = len(brain_info.agents)
 
         # Number of actions
         brain = self._env.brains[self._brain_name]
@@ -124,23 +134,22 @@ class UnityEnvAdapter:
                     brain.vector_observation_space_size)
         print("\tState shape:", self.observation_space.shape)
 
-    def step(self, action):
+    def step(self, actions):
         """ return next_state, action, reward, None """
-        brain_info = self._env.step(action)[self._brain_name]
+        brain_info = self._env.step(actions)[self._brain_name]
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
         dones = brain_info.local_done
-        if self.single_agent:
-            return next_states[0], rewards[0], dones[0], None
-        return next_states, rewards, dones, None
+        states = self.states
+        self.states = next_states
+        return states, actions, rewards, next_states, dones
 
     def reset(self):
         """ return state """
         env_info = self._env.reset(train_mode=False)[self._brain_name]
         states = env_info.vector_observations
-        if self.single_agent:
-            return states[0]
-        return states
+        self.states = states
+        return self.states
 
     def render(self):
         return

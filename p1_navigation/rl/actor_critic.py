@@ -2,7 +2,6 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 
@@ -42,67 +41,57 @@ class ActorCritic:
     def save_model(self, filename):
         torch.save(self._net, filename)
 
-    def end_episode(self, reward, stats, traj_id=0):
-        self._optimize(reward, None, stats)
-        self.prev_state = None
+    def end_episode(self, stats):
+        pass
 
-    def step(self, state, prev_reward, stats, traj_id=0):
-        self._optimize(prev_reward, state, stats)
-        action = self._action(state)
-        self.prev_action = action
-        self.prev_state = state
-        return action
-
-    def _action(self, state):
-        state_tensor = torch.from_numpy(state).float().to(self._device)
+    def step(self, states, stats):
+        states_tensor = torch.from_numpy(states).float().to(self._device)
         self._net.train(False)
         with torch.no_grad():
-            action_logits, _ = self._net(state_tensor)
+            action_logits, _ = self._net(states_tensor)
             action_logits = action_logits.double()
-            action_probs = torch.nn.Softmax(dim=0)(action_logits)
+            action_probs = torch.nn.Softmax(dim=1)(action_logits)
             action_probs = action_probs.detach()
 
-        return np.random.choice(
-                len(action_probs),
-                p=action_probs)
+        actions = []
+        for probs in action_probs:
+            action = np.random.choice(len(probs), p=probs)
+            actions.append(action)
+        return actions
 
-    def _optimize(self, reward, next_state, stats):
+    def transitions(self, states, actions, rewards, next_states, term, stats):
         if self.eval:
-            return
-        if self.prev_state is None:  # beginning of the episode
             return
         t0 = time.time()
         self._net.train(True)
 
-        state = self.prev_state
-        action = self.prev_action
+        states = torch.from_numpy(states).float().to(self._device)
+        actions = torch.tensor(actions).long().to(self._device)
+        actions = torch.unsqueeze(actions, dim=1)
+        rewards = torch.from_numpy(rewards).float().to(self._device)
+        rewards = torch.unsqueeze(rewards, dim=1)
+        term_mask = torch.from_numpy(term.astype(np.uint8)).to(self._device)
+        term_mask = (1 - term_mask).float()  # 0 -> term
+        next_states = torch.from_numpy(next_states).float().to(self._device)
 
-        state = torch.from_numpy(state).float().to(self._device)
-        action = torch.tensor(action).long().to(self._device)
-        reward = torch.tensor(reward).float().to(self._device)
-
-        if next_state is not None:
-            next_state = torch.from_numpy(next_state).float().to(self._device)
-            _, v_next = self._net(next_state)
-        else:
-            v_next = 0.0
-        action_logits, v = self._net(state)
+        _, v_next = self._net(next_states)
+        action_logits, v = self._net(states)
 
         # it's used as:
         # 1. loss for the critic
         # 2. advantage for the actor
-        delta = reward + self._gamma * v_next - v
+        delta = rewards + self._gamma * v_next * term_mask - v
 
-        critic_loss = delta.abs()
+        critic_loss = delta.abs().mean()
 
-        log_softmax = torch.nn.LogSoftmax(dim=0)
+        log_softmax = torch.nn.LogSoftmax(dim=1)
         action_log_probs = log_softmax(action_logits)
-        action_log_probs = action_log_probs.gather(dim=0, index=action)
+        action_log_probs = action_log_probs.gather(dim=1, index=actions)
 
         # minus here because optimizer is going to *minimize* the
         # loss. If we were going to update the weights manually,
         # (without optimizer) we would remove the -1.
-        actor_loss = - delta * action_log_probs
+        actor_loss = - (delta * action_log_probs).mean()
 
         loss = actor_loss + critic_loss
 
@@ -115,8 +104,8 @@ class ActorCritic:
         stats.set('optimization_time', time.time() - t0)
 
         # Log entropy metric (opposite to confidence)
-        action_probs = torch.nn.Softmax(dim=0)(action_logits)
-        entropy = -(action_probs * action_log_probs).sum(dim=0).mean()
+        action_probs = torch.nn.Softmax(dim=1)(action_logits)
+        entropy = -(action_probs * action_log_probs).sum(dim=1).mean()
         stats.set('entropy', entropy.detach())
 
         # Log gradients
@@ -127,11 +116,11 @@ class ActorCritic:
 
         # Log Kullback-Leibler divergence between the new
         # and the old policy.
-        new_action_logits, _ = self._net(state)
-        new_action_probs = torch.nn.Softmax(dim=0)(new_action_logits)
+        new_action_logits, _ = self._net(states)
+        new_action_probs = torch.nn.Softmax(dim=1)(new_action_logits)
         kl = -(
                 (new_action_probs / action_probs).log() * action_probs
-            ).sum(dim=0)
+            ).sum(dim=0).mean()
         stats.set('kl', kl.detach())
 
 

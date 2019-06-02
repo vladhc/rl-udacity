@@ -101,62 +101,35 @@ class Runner(object):
         episode_steps = 0
         reward_acc = 0.0
 
-        single_agent = True
-        try:
-            single_agent = self._env.signle_agent
-        except AttributeError:
-            pass
-
-        state = self._env.reset()
-        if single_agent:
-            reward = None
-        else:
-            reward = [None for idx in range(len(state))]
+        states = self._env.reset()
 
         is_training = not self._agent.eval
 
         while True:
             step_time0 = time.time()
 
-            t0 = time.time()
-            if single_agent:
-                action = self._agent.step(state, reward, stats)
-            else:
-                action = [
-                        self._agent.step(
-                            state[idx],
-                            reward[idx],
-                            stats,
-                            traj_id=idx)
-                        for idx in range(len(state))
-                ]
-
-            if is_training:
-                stats.set('agent_time', time.time() - t0)
+            actions = self._agent.step(self._env.states, stats)
 
             t0 = time.time()
-            next_state, reward, done, _ = self._env.step(action)
+            states, actions, rewards, next_states, dones = self._env.step(
+                    actions)
             if is_training:
                 stats.set('env_time', time.time() - t0)
 
-            if done:
-                next_state = None
-            state = next_state
+            t0 = time.time()
+            self._agent.transitions(
+                    states, actions, rewards, next_states, dones, stats)
+            if is_training:
+                stats.set('agent_time', time.time() - t0)
 
-            reward_acc += reward
+            reward_acc += rewards.sum()
             episode_steps += 1
 
             if is_training:
                 stats.set('step_time', time.time() - step_time0)
 
-            if done or episode_steps == self._max_episode_steps:
+            if dones.all() or episode_steps == self._max_episode_steps:
                 break
 
-        if single_agent:
-            self._agent.end_episode(reward, stats)
-        else:
-            [
-                    self._agent.end_episode(reward[idx], stats, traj_id=idx)
-                    for idx in range(len(reward))
-            ]
-        return episode_steps, reward_acc
+        self._agent.end_episode(stats)
+        return episode_steps, reward_acc / self._env.n_agents
