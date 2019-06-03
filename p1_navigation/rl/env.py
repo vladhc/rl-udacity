@@ -1,9 +1,12 @@
-import gym
-from unityagents import UnityEnvironment
-import numpy as np
+import time
 import math
+import numpy as np
 
+import gym
 from gym import spaces
+from unityagents import UnityEnvironment
+
+from rl import Statistics
 
 
 def create_env(env_id, count=1):
@@ -11,7 +14,7 @@ def create_env(env_id, count=1):
         env = createUnityEnv(env_id)
     else:
         env = MultiGymEnv(env_id, count=count)
-    print("Created {} environment".format(env_id))
+    print("Created {} environment. Instances: {}".format(env_id, count))
     return env
 
 
@@ -25,32 +28,48 @@ class MultiGymEnv(object):
         self.observation_space = self._envs[0].observation_space
 
     def step(self, actions):
+        stats = Statistics()
+
+        t0 = time.time()
         next_states = []
+        states = []
         rewards = []
         dones = []
+        if isinstance(actions, np.ndarray):
+            actions = actions.tolist()
 
-        envs = [env for env in self._envs if not self._skip[env]]
-
-        for action, env in zip(actions, envs):
+        for action, env in zip(actions, self._envs):
             next_state, reward, done, _ = env.step(action)
+
+            state = next_state
+            env_stat = self._env_stats[env]
+            env_stat.set("steps", 1)
+            env_stat.set("rewards", reward)
+            if done:
+                stats.set("steps", env_stat.sum("steps"))
+                stats.set("rewards", env_stat.sum("rewards"))
+                stats.set("episodes", 1)
+                self._env_stats[env] = Statistics()
+                state = env.reset()
+
             next_states.append(next_state)
+            states.append(state)
             rewards.append(reward)
             dones.append(done)
-            self._skip[env] = done
 
-        states = self.states
         rewards = np.asarray(rewards)
         dones = np.asarray(dones)
         next_states = np.asarray(next_states)
-        self.states = next_states[~dones]
-        return states, actions, rewards, next_states, dones
+        self.states = np.asarray(states)
+
+        stats.set("env_time", time.time() - t0)
+
+        return rewards, next_states, dones, stats
 
     def reset(self):
-        self._skip = {env: False for env in self._envs}
+        self._env_stats = {env: Statistics() for env in self._envs}
         states = [env.reset() for env in self._envs]
-        self.episodes_count = 0
         self.states = np.asarray(states)
-        return self.states
 
     def render(self):
         if len(self._env) == 1:

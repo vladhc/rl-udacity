@@ -63,7 +63,20 @@ def main(**args):
                 ref_net=ref_net,
                 gamma=gamma,
                 learning_rate=learning_rate,
-                **args)
+                soft=args["soft"],
+                dueling=args["dueling"],
+                double=args["double"],
+                noisy=args["noisy"],
+                priority=args["priority"],
+                replay_buffer_size=args["replay_buffer_size"],
+                min_replay_buffer_size=args["min_replay_buffer_size"],
+                target_update_freq=args["target_update_freq"],
+                train_freq=args["train_freq"],
+                tau=args["tau"],
+                batch_size=args["batch_size"],
+                epsilon_start=args["epsilon_start"],
+                epsilon_end=args["epsilon_end"],
+                epsilon_decay=args["epsilon_decay"])
     elif agent_type == "reinforce":
         agent = Reinforce(
                 action_size=action_size,

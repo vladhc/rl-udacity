@@ -1,6 +1,7 @@
 import shutil
 import sys
 import time
+import numpy as np
 import tensorflow as tf
 from rl import Statistics
 
@@ -62,74 +63,56 @@ class Runner(object):
     def _run_one_iteration(self):
         stats = Statistics(self._summary_writer, self._iteration)
 
-        rewards, steps = self._run_one_phase(stats, is_training=True)
-        stats.set('training_episodes', len(steps))
-        stats.set('training_steps', sum(steps))
+        phase_stats, agent_stats = self._run_one_phase(is_training=True)
+        stats.set("training_episodes", phase_stats.sum("episodes"))
+        stats.set("training_steps", phase_stats.sum("steps"))
+        stats.set_all(phase_stats.get(["agent_time", "step_time", "env_time"]))
+        stats.set_all(agent_stats)
 
         if self._evaluation_steps != 0:
-            rewards, steps = self._run_one_phase(stats, is_training=False)
-            stats.set('eval_episodes', len(steps))
-        stats.set_all('episode_reward', rewards)
-        stats.set_all('episode_steps', steps)
+            phase_stats, _ = self._run_one_phase(is_training=False)
+            stats.set("eval_episodes", phase_stats.sum("episodes"))
+        stats.set("episode_reward", phase_stats.get("rewards"))
+        stats.set("episode_steps", phase_stats.get("steps"))
 
         return stats
 
-    def _run_one_phase(self, stats, is_training):
-        rewards = []
-        steps = []
+    def _run_one_phase(self, is_training):
+        stats = Statistics()
+        agent_stats = Statistics()
+        stats.set("steps", 0)
+        stats.set("rewards", 0)
+
         self._agent.eval = not is_training
         min_steps = self._training_steps if is_training \
             else self._evaluation_steps
-        while sum(steps) < min_steps:
-            step, reward = self._run_one_episode(stats)
-            steps.append(step)
-            rewards.append(reward)
 
-            sys.stdout.write('Iteration {} ({}). '.format(
-                                        self._iteration,
-                                        "train" if is_training else "eval") +
-                             'Steps executed: {} '.format(sum(steps)) +
-                             'Episode length: {} '.format(steps[-1]) +
-                             'Return: {:.2f}      \r'.format(rewards[-1]))
-            sys.stdout.flush()
-        print()
-        return rewards, steps
-
-    def _run_one_episode(self, stats):
-
-        # For logging purposes
-        episode_steps = 0
-        reward_acc = 0.0
-
-        states = self._env.reset()
-
-        is_training = not self._agent.eval
-
-        while True:
+        self._env.reset()
+        while stats.sum("steps") < min_steps * self._env.n_agents:
             step_time0 = time.time()
 
-            actions = self._agent.step(self._env.states, stats)
+            states = np.copy(self._env.states)
+            actions = self._agent.step(states)
 
-            t0 = time.time()
-            states, actions, rewards, next_states, dones = self._env.step(
-                    actions)
-            if is_training:
-                stats.set('env_time', time.time() - t0)
-
-            t0 = time.time()
-            self._agent.transitions(
-                    states, actions, rewards, next_states, dones, stats)
-            if is_training:
-                stats.set('agent_time', time.time() - t0)
-
-            reward_acc += rewards.sum()
-            episode_steps += 1
+            rewards, next_states, dones, env_stats = self._env.step(actions)
+            stats.set_all(env_stats)
 
             if is_training:
-                stats.set('step_time', time.time() - step_time0)
+                t0 = time.time()
+                agent_stats.set_all(
+                        self._agent.transitions(
+                            states, actions, rewards, next_states, dones))
+                stats.set("agent_time", time.time() - t0)
+                stats.set("step_time", time.time() - step_time0)
 
-            if dones.all() or episode_steps == self._max_episode_steps:
-                break
-
-        self._agent.end_episode(stats)
-        return episode_steps, reward_acc / self._env.n_agents
+            sys.stdout.write("Iteration {} ({}). ".format(
+                                        self._iteration,
+                                        "train" if is_training else "eval") +
+                             "Steps executed: {} ".format(stats.sum("steps")) +
+                             "Episode length: {} ".format(
+                                 int(stats.avg("steps"))) +
+                             "Return: {:.2f}      \r".format(
+                                 stats.avg("rewards")))
+            sys.stdout.flush()
+        print()
+        return stats, agent_stats

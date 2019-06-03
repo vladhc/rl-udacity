@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from rl import Statistics
+
 
 class ActorCritic:
 
@@ -41,10 +43,7 @@ class ActorCritic:
     def save_model(self, filename):
         torch.save(self._net, filename)
 
-    def end_episode(self, stats):
-        pass
-
-    def step(self, states, stats):
+    def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)
         self._net.train(False)
         with torch.no_grad():
@@ -59,9 +58,10 @@ class ActorCritic:
             actions.append(action)
         return actions
 
-    def transitions(self, states, actions, rewards, next_states, term, stats):
+    def transitions(self, states, actions, rewards, next_states, term):
+        stats = Statistics()
         if self.eval:
-            return
+            return stats
         t0 = time.time()
         self._net.train(True)
 
@@ -71,16 +71,17 @@ class ActorCritic:
         rewards = torch.from_numpy(rewards).float().to(self._device)
         rewards = torch.unsqueeze(rewards, dim=1)
         term_mask = torch.from_numpy(term.astype(np.uint8)).to(self._device)
-        term_mask = (1 - term_mask).float()  # 0 -> term
+        term_mask = torch.unsqueeze(term_mask, dim=1)
         next_states = torch.from_numpy(next_states).float().to(self._device)
 
         _, v_next = self._net(next_states)
+        v_next = v_next * (1 - term_mask).float()  # 0 -> term
         action_logits, v = self._net(states)
 
         # it's used as:
         # 1. loss for the critic
         # 2. advantage for the actor
-        delta = rewards + self._gamma * v_next * term_mask - v
+        delta = rewards + self._gamma * v_next - v
 
         critic_loss = delta.abs().mean()
 
@@ -101,6 +102,8 @@ class ActorCritic:
         self._optimizer.step()
 
         stats.set('loss', loss.detach())
+        stats.set('loss_critic', critic_loss.detach())
+        stats.set('loss_actor', actor_loss.detach())
         stats.set('optimization_time', time.time() - t0)
 
         # Log entropy metric (opposite to confidence)
@@ -120,8 +123,9 @@ class ActorCritic:
         new_action_probs = torch.nn.Softmax(dim=1)(new_action_logits)
         kl = -(
                 (new_action_probs / action_probs).log() * action_probs
-            ).sum(dim=0).mean()
+            ).sum(dim=1).mean()
         stats.set('kl', kl.detach())
+        return stats
 
 
 class ActorCriticNet(nn.Module):

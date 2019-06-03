@@ -8,10 +8,8 @@ class GreedyPolicy:
         pass
 
     def get_action(self, q_values):
-        assert q_values.dim() == 2
-        assert q_values.size()[0] == 1
-        best_action = torch.argmax(q_values, dim=1).item()
-        return best_action
+        best_actions = np.argmax(q_values, axis=1)
+        return best_actions
 
 
 class EpsilonPolicy:
@@ -38,7 +36,9 @@ class EpsilonPolicy:
         if np.random.uniform() > self._epsilon:
             return self._policy.get_action(q_values)
         else:
-            return np.random.randint(self._action_size)
+            return np.random.randint(
+                    self._action_size,
+                    size=(len(q_values,)))
 
     def get_epsilon(self):
         return self._epsilon

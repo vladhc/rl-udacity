@@ -8,6 +8,8 @@ from rl import DQNDense, DQNDuelingDense
 from rl import ReplayBuffer, PriorityReplayBuffer
 from rl import GreedyPolicy, EpsilonPolicy
 
+from rl import Statistics
+
 
 class QLearning:
 
@@ -138,65 +140,44 @@ class QLearning:
         # Variables which change during training
         self._optimization_step = 0
         self._step = 0
-        self.prev_state = None
         self.eval = False
 
     def save_model(self, filename):
         torch.save(self._policy_net, filename)
 
-    def end_episode(self, reward, stats, traj_id=0):
-        self._store_transition(
-                None,
-                reward,
-                True)
-        self.prev_state = None
-
-    def _store_transition(self, state, reward, done):
-        if self.eval:
-            return
-        if self.prev_state is None:  # beginning of the episode
-            return
-        if done:
-            assert state is None
-        self._buffer.push(
-                state=self.prev_state,
-                action=self.prev_action,
-                reward=reward,
-                next_state=state,
-                done=done)
-
-    def step(self, state, prev_reward, stats, traj_id=0):
-        self._store_transition(
-                state,
-                prev_reward,
-                False)
-        self.prev_action = self._action(state, stats)
+    def transitions(self, states, actions, rewards, next_states, dones):
+        stats = Statistics()
+        assert not self.eval
+        for idx in range(len(states)):
+            self._buffer.push(
+                    state=states[idx],
+                    action=actions[idx],
+                    reward=rewards[idx],
+                    next_state=next_states[idx],
+                    done=dones[idx])
+        stats.set("replay_buffer_size", len(self._buffer))
         if len(self._buffer) >= self._min_replay_buffer_size:
             t0 = time.time()  # time spent for optimization
-            self._optimize(stats)
-            stats.set('optimization_time', time.time() - t0)
-        stats.set('replay_buffer_size', len(self._buffer))
-        self.prev_state = state
+            stats.set_all(self._optimize())
+            stats.set("optimization_time", time.time() - t0)
+        return stats
+
+    def step(self, states):
+        stats = Statistics()
         self._step += 1
 
-        return self.prev_action
-
-    def _action(self, state, stats):
         if not self.eval:
             self._sample_noise()
-        state_tensor = torch.from_numpy(
-                state).float().unsqueeze(0).to(self._device)
+        states_tensor = torch.from_numpy(states).float().to(self._device)
         self._policy_net.train(False)
         with torch.no_grad():
-            q_values = self._policy_net(state_tensor)
+            q_values = self._policy_net(states_tensor)
         policy = self._greedy_policy if self.eval else self._policy
-        action = policy.get_action(q_values)
+        actions = policy.get_action(q_values.cpu().numpy())
 
         if not self.eval:  # During training
             # Do logging
             q = torch.max(q_values).detach()
-            if self.prev_state is None:
-                stats.set('q_start', q)
             stats.set('q', q)
             self._policy_net.log_scalars(stats.set)
 
@@ -205,7 +186,7 @@ class QLearning:
             except AttributeError:
                 pass
 
-        return action
+        return actions
 
     def _sample_noise(self):
         # Resample noise only during training
@@ -226,11 +207,12 @@ class QLearning:
             if self._optimization_step % self._target_update_freq == 0:
                 self._target_net.load_state_dict(self._policy_net.state_dict())
 
-    def _optimize(self, stats):
+    def _optimize(self):
+        stats = Statistics()
         if self.eval:
-            return
+            return stats
         if self._step % self._train_freq != 0:
-            return
+            return stats
         self._policy_net.train(True)
 
         # Increase ReplayBuffer beta parameter 0.4 → 1.0
@@ -257,8 +239,8 @@ class QLearning:
         # For term states the Q value is calculated differently:
         #   Q(term_state) = R
         term_mask = torch.from_numpy(term).to(self._device)
-        term_mask = (1 - term_mask).float()  # 0 -> term
         term_mask = torch.unsqueeze(term_mask, dim=1)
+        term_mask = (1 - term_mask).float()
         next_states = torch.from_numpy(next_states).float().to(self._device)
 
         # Calculate TD Target
@@ -275,7 +257,8 @@ class QLearning:
         self._sample_noise()
         next_q = self._target_net(next_states).gather(
                 1, next_actions).detach()  # detach → don't backpropagate
-        next_q = next_q * term_mask
+
+        next_q = next_q * (1 - term_mask).float()  # 0 -> term
 
         target_q = rewards + self._gamma * next_q
 
@@ -332,3 +315,5 @@ class QLearning:
         except AttributeError:
             # No ref_net is set
             pass
+
+        return stats

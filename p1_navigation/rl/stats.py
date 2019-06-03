@@ -6,7 +6,7 @@ import tensorflow as tf
 
 class Statistics(object):
 
-    def __init__(self, summary_writer, iteration):
+    def __init__(self, summary_writer=None, iteration=None):
         self._dict = defaultdict(list)
         self._summary_writer = summary_writer
         self._iteration = iteration
@@ -44,11 +44,31 @@ class Statistics(object):
 
     def set(self, key, value):
         k = self._dict[key]
-        k.append(value)
+        if isinstance(value, list):
+            k.extend(value)
+        else:
+            k.append(value)
         self._dict[key] = k
 
-    def set_all(self, key, value):
-        for val in value:
+    def get(self, arg):
+        if isinstance(arg, dict):
+            d = {}
+            for old_key, new_key in arg.items():
+                if old_key in self._dict:
+                    d[new_key] = self._dict[old_key]
+            return d
+        if isinstance(arg, list):
+            d = {}
+            for key in arg:
+                d[key] = self._dict[key]
+            return d
+        if isinstance(arg, str):
+            return self._dict[arg]
+
+    def set_all(self, props):
+        if isinstance(props, Statistics):
+            props = props._dict
+        for key, val in props.items():
             self.set(key, val)
 
     def avg(self, key):
@@ -60,6 +80,8 @@ class Statistics(object):
         return sum(self._dict[key])
 
     def max(self, key):
+        if key not in self._dict:
+            return None
         return max(self._dict[key])
 
     def count(self, key):
