@@ -16,7 +16,6 @@ class Runner(object):
             num_iterations,
             training_steps,
             evaluation_steps,
-            max_episode_steps,
             bucket):
 
         self._env = env
@@ -26,7 +25,6 @@ class Runner(object):
         self._iteration = 0
         self._training_steps = training_steps
         self._evaluation_steps = evaluation_steps
-        self._max_episode_steps = max_episode_steps
 
         print("Session ID: {}".format(self._session_id))
         print("Iterations: {}".format(self._num_iterations))
@@ -34,8 +32,6 @@ class Runner(object):
             self._training_steps))
         print("Evaluation steps per iteration: {}".format(
             self._evaluation_steps))
-        print("Maximum steps per episode: {}".format(
-            self._max_episode_steps))
 
         self._bucket = bucket
 
@@ -80,28 +76,31 @@ class Runner(object):
     def _run_one_phase(self, is_training):
         stats = Statistics()
         agent_stats = Statistics()
-        stats.set("steps", 0)
-        stats.set("rewards", 0)
 
         self._agent.eval = not is_training
-        min_steps = self._training_steps if is_training \
+        min_steps = self._training_steps * self._env.n_agents if is_training \
             else self._evaluation_steps
 
         self._env.reset()
-        while stats.sum("steps") < min_steps * self._env.n_agents:
+        while stats.sum("steps") < min_steps:
             step_time0 = time.time()
 
             states = np.copy(self._env.states)
             actions = self._agent.step(states)
 
-            rewards, next_states, dones, env_stats = self._env.step(actions)
+            rewards, next_states, dones, env_stats = \
+                self._env.step(actions)
             stats.set_all(env_stats)
 
             if is_training:
                 t0 = time.time()
                 agent_stats.set_all(
                         self._agent.transitions(
-                            states, actions, rewards, next_states, dones))
+                            states,
+                            actions,
+                            rewards,
+                            next_states,
+                            dones))
                 stats.set("agent_time", time.time() - t0)
                 stats.set("step_time", time.time() - step_time0)
 
@@ -115,4 +114,5 @@ class Runner(object):
                                  stats.avg("rewards")))
             sys.stdout.flush()
         print()
+        self._agent.episodes_end()
         return stats, agent_stats

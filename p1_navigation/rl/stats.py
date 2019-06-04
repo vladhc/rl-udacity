@@ -11,6 +11,7 @@ class Statistics(object):
         self._summary_writer = summary_writer
         self._iteration = iteration
         self._metrics = {
+            'advantage': (self.avg, 'advantage'),
             'episode_reward': (self.avg, 'episode_reward'),
             'episode_steps': (self.avg, 'episode_steps'),
             'training_steps': (self.avg, 'training_steps'),
@@ -18,16 +19,22 @@ class Statistics(object):
             'evaluation_episodes': (self.avg, 'eval_episodes'),
             'replay_buffer_beta': (self.avg, 'replay_beta'),
             'replay_buffer_size': (self.max, 'replay_buffer_size'),
+            'replay_buffer_trajectories': (
+                self.max, 'replay_buffer_trajectories'),
             'q': (self.avg, 'q'),
             'q_start': (self.avg, 'q_start'),
             'q_next_overestimate': (self.avg, 'q_next_overestimate'),
             'q_next_err': (self.avg, 'q_next_err'),
             'q_next_err_std': (self.avg, 'q_next_err_std'),
             'loss': (self.avg, 'loss'),
+            'loss_actor': (self.avg, 'loss_actor'),
+            'loss_critic': (self.avg, 'loss_critic'),
             'epsilon': (self.avg, 'epsilon'),
             'steps_per_second_env': (self.rate, 'env_time'),
             'steps_per_second': (self.rate, 'step_time'),
             'steps_per_second_optimization': (self.rate, 'optimization_time'),
+            'ppo_optimization_epochs': (self.sum, 'ppo_optimization_epochs'),
+            'ppo_optimization_samples': (self.avg, 'ppo_optimization_samples'),
             'noise_value_fc1': (self.avg, 'noise_value_fc1'),
             'noise_value_fc2': (self.avg, 'noise_value_fc2'),
             'noise_advantage_fc1': (self.avg, 'noise_advantage_fc1'),
@@ -73,7 +80,7 @@ class Statistics(object):
 
     def avg(self, key):
         if len(self._dict[key]) == 0:
-            return None
+            return 0.0
         return np.average(self._dict[key])
 
     def sum(self, key):

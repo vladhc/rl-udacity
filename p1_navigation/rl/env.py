@@ -19,6 +19,7 @@ def create_env(env_id, count=1):
 
 
 class MultiGymEnv(object):
+    """ Simulates mutliple simultaneously running environments """
 
     def __init__(self, env_id, count):
         assert count > 0
@@ -72,8 +73,11 @@ class MultiGymEnv(object):
         self.states = np.asarray(states)
 
     def render(self):
-        if len(self._env) == 1:
-            self._env.render()
+        if len(self._envs) == 1:
+            self._envs[0].render()
+
+    def close(self):
+        [env.close() for env in self._envs]
 
 
 class WrapNormalizeState(gym.ObservationWrapper):

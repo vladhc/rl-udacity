@@ -13,11 +13,12 @@ class ReplayBuffer:
         self._actions = np.zeros(capacity, dtype=np.uint8)
         self._rewards = np.zeros(capacity, dtype=np.float16)
         self._term = np.zeros(capacity, dtype=np.uint8)
-        self._trajectory_ids = np.zeros(capacity, dtype=np.uint32)
 
+        self.reset()
+
+    def reset(self):
         self._cursor = 0
         self._overwrite = False
-        self._trajectory_id = 0
 
     def push(self, state, action, reward, next_state, done):
         idx = self._cursor
@@ -27,10 +28,6 @@ class ReplayBuffer:
         self._rewards[idx] = reward
         self._next_states[idx] = next_state
         self._term[idx] = 1 if done else 0
-        self._trajectory_ids[idx] = self._trajectory_id
-
-        if done:
-            self._trajectory_id += 1
 
         self._cursor += 1
         if self._cursor >= self._capacity:

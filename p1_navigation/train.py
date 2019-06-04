@@ -1,7 +1,7 @@
 import argparse
 
 from rl import Runner, create_env
-from rl import Reinforce, QLearning, ActorCritic
+from rl import Reinforce, QLearning, ActorCritic, PPO
 
 from google.cloud import storage
 
@@ -11,11 +11,11 @@ BUCKET = 'rl-1'
 
 
 def main(**args):
-    env = create_env(args['env'], args['env_count'])
+    envs_count = args['env_count']
+    env = create_env(args['env'], envs_count)
 
     iterations = args['iterations']
     training_steps = args['steps']
-    max_episode_steps = args['max_episode_steps']
     evaluation_steps = args['eval_steps']
     gcp = args['gcp']
 
@@ -91,6 +91,15 @@ def main(**args):
                 observation_shape=observation_shape,
                 gamma=gamma,
                 learning_rate=learning_rate)
+    elif agent_type == "ppo":
+        agent = PPO(
+                action_size=action_size,
+                observation_shape=observation_shape,
+                n_agents=envs_count,
+                gamma=gamma,
+                horizon=args["horizon"],
+                epochs=args["ppo_epochs"],
+                learning_rate=learning_rate)
 
     runner = Runner(
             env,
@@ -99,8 +108,7 @@ def main(**args):
             bucket=bucket,
             num_iterations=iterations,
             training_steps=training_steps,
-            evaluation_steps=evaluation_steps,
-            max_episode_steps=max_episode_steps)
+            evaluation_steps=evaluation_steps)
     runner.run_experiment()
 
 
@@ -127,7 +135,6 @@ if __name__ == '__main__':
     parser.add_argument("--eval_steps", type=int, default=100,
             help="Number of steps for evaluation phase in one iteration")
     parser.add_argument("--iterations", type=int, default=50)
-    parser.add_argument("--max_episode_steps", type=int, default=2000)
     parser.add_argument("--target_update_freq", type=int, default=100,
             help="Update target network each N steps")
     parser.add_argument("--epsilon_start", type=float, default=0.5)
@@ -152,6 +159,11 @@ if __name__ == '__main__':
         "This checkpoint should point to an already trained network. " +
         "The network is used for extimation of V_next* " +
         "(true next state values).")
+    parser.add_argument("--horizon", type=int, default=128,
+        help="PPO parameter. How many timesteps collect experience " +
+        "before starting optimization phase.")
+    parser.add_argument("--ppo_epochs", type=int, default=12,
+        help="PPO parameter. Epochs count in the optimization phase.")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
