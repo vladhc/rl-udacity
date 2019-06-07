@@ -33,22 +33,14 @@ class PPO:
         self._device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
 
-        self._actor_net = Net(
+        self._net = Net(
                 observation_shape,
                 action_size)
-        self._actor_net.to(self._device)
-
-        self._critic_net = Net(
-                observation_shape,
-                1)
-        self._critic_net.to(self._device)
+        self._net.to(self._device)
 
         # Optimizer and loss
-        self._actor_optimizer = optim.Adam(
-                self._actor_net.parameters(),
-                lr=learning_rate)
-        self._critic_optimizer = optim.Adam(
-                self._critic_net.parameters(),
+        self._optimizer = optim.Adam(
+                self._net.parameters(),
                 lr=learning_rate)
         print("\tLearning rate: {}".format(learning_rate))
 
@@ -63,13 +55,13 @@ class PPO:
                 gamma=self._gamma)
 
     def save_model(self, filename):
-        torch.save(self._actor_net, filename)
+        torch.save(self._net, filename)
 
     def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)
-        self._actor_net.train(False)
+        self._net.train(False)
         with torch.no_grad():
-            action_logits = self._actor_net(states_tensor)
+            action_logits, _ = self._net(states_tensor)
             action_logits = action_logits.double()
             action_probs = torch.nn.Softmax(dim=1)(action_logits)
             action_probs = action_probs.detach()
@@ -101,7 +93,8 @@ class PPO:
     def _v(self, state):
         state_tensor = torch.tensor([state]).float().to(self._device)
         assert state_tensor.shape == (1,) + self._observation_shape
-        v = self._critic_net(state_tensor).cpu().numpy()
+        _, v = self._net(state_tensor)
+        v = v.cpu().numpy()
         assert v.shape == (1, 1)
         return v[0][0]
 
@@ -114,8 +107,7 @@ class PPO:
         if not self._buffer.ready():
             return stats
 
-        self._critic_net.train(True)
-        self._actor_net.train(True)
+        self._net.train(True)
 
         # Create tensors: state, action, next_state, term
         states, actions, rewards, next_states, term, gs = self._buffer.sample(
@@ -137,44 +129,25 @@ class PPO:
 
         # Estimate advantage
         with torch.no_grad():
-            v = self._critic_net(states)
+            _, v = self._net(states)
             advantage = gs - v
             advantage = advantage / torch.std(advantage)
             advantage = advantage.detach()
             assert advantage.shape == (batch_size, 1)
             stats.set('advantage', advantage.abs().mean())
 
-        # Critic optimization phase
-        loss_fn = nn.MSELoss()
-        for _ in range(self._epochs):
-            # Critic loss
-            v_next = self._critic_net(next_states)
-            v_next = v_next * term_mask
-            v_next = v_next.detach()
-            assert v_next.shape == (batch_size, 1)
-
-            target_v = rewards + self._gamma * v_next
-            assert target_v.shape == (batch_size, 1)
-
-            v = self._critic_net(states)
-            assert v.shape == (batch_size, 1)
-
-            critic_loss = loss_fn(v, target_v)
-
-            # Critic optimization
-            self._critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self._critic_optimizer.step()
+        # Iteratively optimize the network
+        softmax = torch.nn.Softmax(dim=1)
+        log_softmax = torch.nn.LogSoftmax(dim=1)
+        critic_loss_fn = nn.MSELoss()
 
         # Action probabilities of the network before optimization
         old_action_probs = None
 
-        softmax = torch.nn.Softmax(dim=1)
-        log_softmax = torch.nn.LogSoftmax(dim=1)
-
-        # Actor optimization phase
         for _ in range(self._epochs):
-            action_logits = self._actor_net(states)
+            action_logits, v = self._net(states)
+
+            # Calculate Actor Loss
             assert action_logits.shape == (batch_size, self._action_size)
 
             action_probs = softmax(action_logits).gather(dim=1, index=actions)
@@ -190,19 +163,35 @@ class PPO:
                     torch.clamp(
                         r, 1. - self._epsilon, 1. + self._epsilon) * advantage)
             assert obj.shape == (batch_size, 1)
+
             # minus here because optimizer is going to *minimize* the
             # loss. If we were going to update the weights manually,
             # (without optimizer) we would remove the -1.
             actor_loss = -obj.mean()
 
-            # Optimize actor
-            self._actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self._actor_optimizer.step()
+            # Calculate Critic Loss
+            assert v.shape == (batch_size, 1)
+
+            _, v_next = self._net(next_states)
+            v_next = v_next * term_mask
+            v_next = v_next.detach()
+            assert v_next.shape == (batch_size, 1)
+
+            target_v = rewards + self._gamma * v_next
+            assert target_v.shape == (batch_size, 1)
+
+            critic_loss = critic_loss_fn(v, target_v)
+
+            # Optimize
+            loss = critic_loss + actor_loss
+            self._optimizer.zero_grad()
+            loss.backward()
+            self._optimizer.step()
 
             stats.set('loss_actor', actor_loss.detach())
+            stats.set('loss_critic', critic_loss.detach())
             # Log gradients
-            for p in self._actor_net.parameters():
+            for p in self._net.parameters():
                 if p.grad is not None:
                     stats.set('grad_max', p.grad.abs().max().detach())
                     stats.set('grad_mean', (p.grad ** 2).mean().sqrt().detach())
@@ -210,13 +199,12 @@ class PPO:
         self._buffer.reset()
 
         # Log stats
-        stats.set('loss_critic', critic_loss.detach())
         stats.set('optimization_time', time.time() - t0)
         stats.set('ppo_optimization_epochs', self._epochs)
         stats.set('ppo_optimization_samples', batch_size)
 
         # Log entropy metric (opposite to confidence)
-        action_logits = self._actor_net(states)
+        action_logits, _ = self._net(states)
         action_probs = softmax(action_logits)
         action_log_probs = log_softmax(action_logits)
         entropy = -(action_probs * action_log_probs).sum(dim=1).mean()
@@ -237,7 +225,7 @@ class Net(nn.Module):
     def __init__(
             self,
             observation_size,
-            outputs):
+            action_size):
         super(Net, self).__init__()
 
         self.is_dense = len(observation_size) == 1
@@ -245,16 +233,18 @@ class Net(nn.Module):
         hidden_units = 128
         assert self.is_dense
 
-        self.output_head = nn.Sequential(
+        self.middleware = nn.Sequential(
                 nn.Linear(observation_size[0], hidden_units),
                 nn.ReLU(),
                 nn.Linear(hidden_units, hidden_units),
-                nn.ReLU(),
-                nn.Linear(hidden_units, outputs),
-                )
+                nn.ReLU())
+
+        self.head_actions = nn.Linear(hidden_units, action_size)
+        self.head_v = nn.Linear(hidden_units, 1)
 
     def forward(self, x):
-        return self.output_head(x)
+        x = self.middleware(x)
+        return self.head_actions(x), self.head_v(x)
 
 
 TrajectoryPoint = namedtuple('TrajectoryPoint', [
@@ -296,7 +286,7 @@ class TrajectoryBuffer:
                 self.collected_trajectories.append(traj)
         self._trajectories = defaultdict(list)
 
-    def sample(self, critic_net):
+    def sample(self, v_fn):
         self.finish_trajectories()
 
         states = []
@@ -312,7 +302,7 @@ class TrajectoryBuffer:
                 g = 0.0
             else:
                 with torch.no_grad():
-                    g = critic_net(last_pt.next_state)
+                    g = v_fn(last_pt.next_state)
 
             for pt in reversed(traj):
                 states.append(pt.state)
