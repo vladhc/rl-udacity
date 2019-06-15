@@ -92,14 +92,17 @@ class PPO:
                     idx)
         return self._optimize()
 
-    def _v(self, state):
-        state_tensor = torch.tensor([state]).float().to(self._device)
-        assert state_tensor.shape == (1,) + self._observation_shape
+    def _v(self, states):
+        assert len(states) > 0
+        states_tensor = torch.tensor(states).float().to(self._device)
+        assert states_tensor.shape == (len(states),) + self._observation_shape
         with torch.no_grad():
-            _, v = self._net(state_tensor)
+            _, v = self._net(states_tensor)
             v = v.cpu().numpy()
-        assert v.shape == (1, 1)
-        return v[0][0]
+        assert v.shape == (len(states), 1)
+        v = np.squeeze(v, axis=1)
+        assert v.shape == (len(states),), v
+        return v
 
     def _optimize(self):
         stats = Statistics()
@@ -278,27 +281,48 @@ class TrajectoryBuffer:
                 self.collected_trajectories.append(traj)
         self._trajectories = defaultdict(list)
 
+    def _v(self, traj, v_fn, state_fn):
+        states = []
+        for pt in traj:
+            state = state_fn(pt)
+            states.append(state)
+        states = np.asarray(states, dtype=np.float16)
+        return v_fn(states)
+
     def sample(self, v_fn):
         self.finish_trajectories()
 
         states = []
         actions = []
-        vs = []
+        vs_target = []
         gaes = []  # Generalized Advantage Estimations
 
         for traj in self.collected_trajectories:
-            v_trail = deque(maxlen=self._horizon)
-            r_trail = deque(maxlen=self._horizon)
 
-            for pt in reversed(traj):
-                states.append(pt.state)
-                actions.append(pt.action)
+            # States and their values
+            vs = self._v(traj, v_fn, lambda pt: pt.state)
+            vs_next = self._v(traj, v_fn, lambda pt: pt.next_state)
+            if traj[-1].done:
+                vs_next[-1] = 0.0
 
-                v_next = v_fn(pt.next_state) if not pt.done else 0.0
-                vs.append(pt.reward + self._gamma * v_next)
+            # We are going to work with the reversed trajectory
+            vs_next = np.flip(vs_next)
+            vs = np.flip(vs)
 
+            r_trail = []
+            v_trail = []
+
+            for idx, pt in enumerate(reversed(traj)):
+
+                v_next = vs_next[idx]
+                v = vs[idx]
+
+                vs_target.append(pt.reward + self._gamma * v_next)
                 v_trail.append(v_next)
                 r_trail.append(pt.reward)
+
+                states.append(pt.state)
+                actions.append(pt.action)
 
                 # Calculate the Generalized Advantage Estimation
                 assert len(v_trail) == len(r_trail)
@@ -306,7 +330,6 @@ class TrajectoryBuffer:
                 # how much impact will make each `n_step_advantage`
                 # on the resulting `advantage` value.
                 weights = []
-                v = v_fn(pt.state)  # Value of the current state
                 for n in range(len(v_trail)):
                     discount = 0
 
@@ -329,10 +352,14 @@ class TrajectoryBuffer:
 
         states = np.asarray(states, dtype=np.float16)
         actions = np.asarray(actions, dtype=np.uint8)
-        vs = np.asarray(vs, dtype=np.float16)
+        vs_target = np.asarray(vs_target, dtype=np.float16)
         gaes = np.asarray(gaes, dtype=np.float16)
 
-        return states, actions, vs, gaes
+        assert len(states) == len(actions)
+        assert len(states) == len(vs_target)
+        assert len(states) == len(gaes)
+
+        return states, actions, vs_target, gaes
 
     def capacity(self):
         return self._capacity
