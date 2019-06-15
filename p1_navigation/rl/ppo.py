@@ -52,6 +52,7 @@ class PPO:
 
         self._buffer = TrajectoryBuffer(
                 capacity=self._horizon * n_agents,
+                observation_shape=observation_shape,
                 horizon=self._horizon,
                 gae_lambda=gae_lambda,
                 gamma=self._gamma)
@@ -240,33 +241,83 @@ class Net(nn.Module):
         return self.head_actions(x), self.head_v(x)
 
 
-TrajectoryPoint = namedtuple('TrajectoryPoint', [
-    'state', 'action', 'reward', 'next_state', 'done'
-    ])
+class Trajectory:
+
+    def __init__(self, capacity, observation_shape):
+        self._capacity = capacity
+        self._cursor = 0
+
+        self.states = np.zeros(
+                (capacity,) + observation_shape, dtype=np.float16)
+        self.next_states = np.zeros(
+                (capacity,) + observation_shape, dtype=np.float16)
+        self.actions = np.zeros(capacity, dtype=np.uint8)
+        self.rewards = np.zeros(capacity, dtype=np.float16)
+        self.terminated = False  # if the final state is term state
+
+    def push(self, state, action, reward, next_state, done):
+        assert not self.terminated
+        assert self._cursor < self._capacity
+
+        idx = self._cursor
+
+        self.states[idx] = state
+        self.actions[idx] = action
+        self.rewards[idx] = reward
+        self.next_states[idx] = next_state
+
+        self._cursor += 1
+
+        if done:
+            self.terminated = True
+            self.close()
+
+    def close(self):
+        self.states = self.states[:self._cursor, :]
+        self.next_states = self.next_states[:self._cursor, :]
+        self.actions = self.actions[:self._cursor]
+        self.rewards = self.rewards[:self._cursor]
+
+    def done(self):
+        return self.terminated or self._capacity == len(self)
+
+    def __len__(self):
+        return self._cursor
 
 
 class TrajectoryBuffer:
 
-    def __init__(self, capacity, horizon, gamma, gae_lambda):
+    def __init__(
+            self,
+            capacity,
+            observation_shape,
+            horizon,
+            gamma,
+            gae_lambda):
         self._gamma = gamma
         self._capacity = capacity
-        self._horizon = horizon
+        print("\tlambda for GAE(lambda): {}".format(gae_lambda))
+        self._weights = np.asarray([
+            gae_lambda ** n for n in range(horizon)
+        ])
+        self._discounts = np.asarray([
+            gamma ** n for n in range(horizon + 1)
+        ])
+        self._trajectories = defaultdict(
+            lambda: Trajectory(horizon, observation_shape)
+        )
         self.reset()
-        self._lambda = gae_lambda
-        print("\tlambda for GAE(lambda): {}".format(self._lambda))
 
     def reset(self):
         self.collected_trajectories = []
-        self._trajectories = defaultdict(list)
 
     def push(self, state, action, reward, next_state, done, env_idx):
-        pt = TrajectoryPoint(state, action, reward, next_state, done)
         traj = self._trajectories[env_idx]
-        traj.append(pt)
+        traj.push(state, action, reward, next_state, done)
         self._trajectories[env_idx] = traj
-        if done or len(traj) == self._horizon:
+        if traj.done():
             self.collected_trajectories.append(traj)
-            self._trajectories[env_idx] = []
+            del self._trajectories[env_idx]
 
     def __len__(self):
         return sum([len(traj) for traj in self.collected_trajectories]) + \
@@ -278,88 +329,74 @@ class TrajectoryBuffer:
     def finish_trajectories(self):
         for _, traj in self._trajectories.items():
             if len(traj) > 0:
+                traj.close()
                 self.collected_trajectories.append(traj)
-        self._trajectories = defaultdict(list)
-
-    def _v(self, traj, v_fn, state_fn):
-        states = []
-        for pt in traj:
-            state = state_fn(pt)
-            states.append(state)
-        states = np.asarray(states, dtype=np.float16)
-        return v_fn(states)
+        self._trajectories.clear()
 
     def sample(self, v_fn):
         self.finish_trajectories()
 
-        states = []
-        actions = []
-        vs_target = []
+        v_targets = []
         gaes = []  # Generalized Advantage Estimations
 
         for traj in self.collected_trajectories:
 
             # States and their values
-            vs = self._v(traj, v_fn, lambda pt: pt.state)
-            vs_next = self._v(traj, v_fn, lambda pt: pt.next_state)
-            if traj[-1].done:
+            vs = v_fn(traj.states)
+            vs_next = v_fn(traj.next_states)
+            if traj.terminated:
                 vs_next[-1] = 0.0
 
-            # We are going to work with the reversed trajectory
-            vs_next = np.flip(vs_next)
-            vs = np.flip(vs)
+            v_target = traj.rewards + self._gamma * vs_next
+            assert v_target.shape == traj.rewards.shape
+            v_targets.append(v_target)
 
-            r_trail = []
-            v_trail = []
+            traj_gaes = []
 
-            for idx, pt in enumerate(reversed(traj)):
+            for idx in range(len(traj)):
 
-                v_next = vs_next[idx]
                 v = vs[idx]
 
-                vs_target.append(pt.reward + self._gamma * v_next)
-                v_trail.append(v_next)
-                r_trail.append(pt.reward)
-
-                states.append(pt.state)
-                actions.append(pt.action)
+                v_trail = vs_next[idx:]
+                r_trail = traj.rewards[idx:]
 
                 # Calculate the Generalized Advantage Estimation
-                assert len(v_trail) == len(r_trail)
                 advantages = []
-                # how much impact will make each `n_step_advantage`
-                # on the resulting `advantage` value.
-                weights = []
                 for n in range(len(v_trail)):
-                    discount = 0
 
                     # n-step reward
-                    n_step_r = 0.
-                    for r in list(r_trail)[:n + 1]:
-                        n_step_r += r * (self._gamma ** discount)
-                        discount += 1
+                    steps = n + 1
+                    rewards = r_trail[:steps]
+                    n_step_r = sum(rewards * self._discounts[:steps])
 
                     # n-step Advantage
                     n_step_advantage = -v + n_step_r + \
-                        (self._gamma ** discount) * list(v_trail)[n]
+                        self._discounts[steps] * v_trail[n]
                     advantages.append(n_step_advantage)
 
-                    weights.append(self._lambda ** n)
-                gae = 0.0
-                for weight, advantage in zip(weights, advantages):
-                    gae += weight / sum(weights) * advantage
-                gaes.append(gae)
+                advantages = np.asarray(advantages, dtype=np.float16)
+                weights = self._weights[:len(advantages)]
+                gae = sum(weights / sum(weights) * advantages)
+                traj_gaes.append(gae)
 
-        states = np.asarray(states, dtype=np.float16)
-        actions = np.asarray(actions, dtype=np.uint8)
-        vs_target = np.asarray(vs_target, dtype=np.float16)
-        gaes = np.asarray(gaes, dtype=np.float16)
+            traj_gaes = np.asarray(traj_gaes, dtype=np.float16)
+            assert len(traj.states) == len(traj_gaes)
+            gaes.append(traj_gaes)
+
+        states = np.concatenate([
+            traj.states for traj in self.collected_trajectories
+        ], axis=0)
+        actions = np.concatenate([
+            traj.actions for traj in self.collected_trajectories
+        ], axis=0)
+        v_targets = np.concatenate(v_targets, axis=0)
+        gaes = np.concatenate(gaes, axis=0)
 
         assert len(states) == len(actions)
-        assert len(states) == len(vs_target)
+        assert len(states) == len(v_targets)
         assert len(states) == len(gaes)
 
-        return states, actions, vs_target, gaes
+        return states, actions, v_targets, gaes
 
     def capacity(self):
         return self._capacity
