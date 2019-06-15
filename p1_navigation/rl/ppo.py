@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import defaultdict, namedtuple, deque
+from collections import defaultdict
 
 from rl import Statistics
 
@@ -351,8 +351,7 @@ class TrajectoryBuffer:
             assert v_target.shape == traj.rewards.shape
             v_targets.append(v_target)
 
-            traj_gaes = []
-
+            traj_gaes = np.zeros(len(traj), dtype=np.float16)
             for idx in range(len(traj)):
 
                 v = vs[idx]
@@ -361,7 +360,7 @@ class TrajectoryBuffer:
                 r_trail = traj.rewards[idx:]
 
                 # Calculate the Generalized Advantage Estimation
-                advantages = []
+                advantages = np.zeros(len(v_trail), dtype=np.float16)
                 for n in range(len(v_trail)):
 
                     # n-step reward
@@ -372,14 +371,12 @@ class TrajectoryBuffer:
                     # n-step Advantage
                     n_step_advantage = -v + n_step_r + \
                         self._discounts[steps] * v_trail[n]
-                    advantages.append(n_step_advantage)
+                    advantages[n] = n_step_advantage
 
-                advantages = np.asarray(advantages, dtype=np.float16)
                 weights = self._weights[:len(advantages)]
                 gae = sum(weights / sum(weights) * advantages)
-                traj_gaes.append(gae)
+                traj_gaes[idx] = gae
 
-            traj_gaes = np.asarray(traj_gaes, dtype=np.float16)
             assert len(traj.states) == len(traj_gaes)
             gaes.append(traj_gaes)
 
