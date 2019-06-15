@@ -99,6 +99,7 @@ def main(**args):
                 gamma=gamma,
                 horizon=args["horizon"],
                 epochs=args["ppo_epochs"],
+                gae_lambda=args["gae_lambda"],
                 learning_rate=learning_rate)
 
     runner = Runner(
@@ -164,6 +165,8 @@ if __name__ == '__main__':
         "before starting optimization phase.")
     parser.add_argument("--ppo_epochs", type=int, default=12,
         help="PPO parameter. Epochs count in the optimization phase.")
+    parser.add_argument("--gae_lambda", type=float, default=0.95,
+        help="lambda parameter for Advantage Function Estimation (GAE)")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)

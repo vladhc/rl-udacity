@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import defaultdict, namedtuple
+from collections import defaultdict, namedtuple, deque
 
 from rl import Statistics
 
@@ -17,6 +17,7 @@ class PPO:
             n_agents,
             gamma=0.99,
             horizon=128,
+            gae_lambda=0.95,
             epochs=12,
             epsilon=0.2,
             learning_rate=0.0001):
@@ -52,6 +53,7 @@ class PPO:
         self._buffer = TrajectoryBuffer(
                 capacity=self._horizon * n_agents,
                 horizon=self._horizon,
+                gae_lambda=gae_lambda,
                 gamma=self._gamma)
 
     def save_model(self, filename):
@@ -93,8 +95,9 @@ class PPO:
     def _v(self, state):
         state_tensor = torch.tensor([state]).float().to(self._device)
         assert state_tensor.shape == (1,) + self._observation_shape
-        _, v = self._net(state_tensor)
-        v = v.cpu().numpy()
+        with torch.no_grad():
+            _, v = self._net(state_tensor)
+            v = v.cpu().numpy()
         assert v.shape == (1, 1)
         return v[0][0]
 
@@ -110,7 +113,7 @@ class PPO:
         self._net.train(True)
 
         # Create tensors: state, action, next_state, term
-        states, actions, rewards, next_states, term, gs = self._buffer.sample(
+        states, actions, target_v, advantage = self._buffer.sample(
                 self._v)
         batch_size = len(states)
         assert batch_size == self._buffer.capacity()
@@ -118,19 +121,13 @@ class PPO:
         states = torch.from_numpy(states).float().to(self._device)
         actions = torch.from_numpy(actions).long().to(self._device)
         actions = torch.unsqueeze(actions, dim=1)
-        rewards = torch.from_numpy(rewards).float().to(self._device)
-        rewards = torch.unsqueeze(rewards, dim=1)
-        gs = torch.from_numpy(gs).float().to(self._device)
-        gs = torch.unsqueeze(gs, dim=1)
-        term_mask = torch.from_numpy(term.astype(np.uint8)).to(self._device)
-        term_mask = torch.unsqueeze(term_mask, dim=1)
-        term_mask = (1 - term_mask).float()  # 0 -> term
-        next_states = torch.from_numpy(next_states).float().to(self._device)
+        advantage = torch.from_numpy(advantage).float().to(self._device)
+        advantage = torch.unsqueeze(advantage, dim=1)
+        target_v = torch.from_numpy(target_v).float().to(self._device)
+        target_v = torch.unsqueeze(target_v, dim=1)
 
         # Estimate advantage
         with torch.no_grad():
-            _, v = self._net(states)
-            advantage = gs - v
             advantage = advantage / torch.std(advantage)
             advantage = advantage.detach()
             assert advantage.shape == (batch_size, 1)
@@ -171,13 +168,6 @@ class PPO:
 
             # Calculate Critic Loss
             assert v.shape == (batch_size, 1)
-
-            _, v_next = self._net(next_states)
-            v_next = v_next * term_mask
-            v_next = v_next.detach()
-            assert v_next.shape == (batch_size, 1)
-
-            target_v = rewards + self._gamma * v_next
             assert target_v.shape == (batch_size, 1)
 
             critic_loss = critic_loss_fn(v, target_v)
@@ -254,11 +244,13 @@ TrajectoryPoint = namedtuple('TrajectoryPoint', [
 
 class TrajectoryBuffer:
 
-    def __init__(self, capacity, horizon, gamma):
+    def __init__(self, capacity, horizon, gamma, gae_lambda):
         self._gamma = gamma
         self._capacity = capacity
         self._horizon = horizon
         self.reset()
+        self._lambda = gae_lambda
+        print("\tlambda for GAE(lambda): {}".format(self._lambda))
 
     def reset(self):
         self.collected_trajectories = []
@@ -291,36 +283,56 @@ class TrajectoryBuffer:
 
         states = []
         actions = []
-        rewards = []
-        next_states = []
-        dones = []
-        gs = []
+        vs = []
+        gaes = []  # Generalized Advantage Estimations
 
         for traj in self.collected_trajectories:
-            last_pt = traj[-1]
-            if last_pt.done:
-                g = 0.0
-            else:
-                with torch.no_grad():
-                    g = v_fn(last_pt.next_state)
+            v_trail = deque(maxlen=self._horizon)
+            r_trail = deque(maxlen=self._horizon)
 
             for pt in reversed(traj):
                 states.append(pt.state)
                 actions.append(pt.action)
-                rewards.append(pt.reward)
-                next_states.append(pt.next_state)
-                dones.append(pt.done)
-                g = pt.reward + self._gamma * g
-                gs.append(g)
+
+                v_next = v_fn(pt.next_state) if not pt.done else 0.0
+                vs.append(pt.reward + self._gamma * v_next)
+
+                v_trail.append(v_next)
+                r_trail.append(pt.reward)
+
+                # Calculate the Generalized Advantage Estimation
+                assert len(v_trail) == len(r_trail)
+                advantages = []
+                # how much impact will make each `n_step_advantage`
+                # on the resulting `advantage` value.
+                weights = []
+                v = v_fn(pt.state)  # Value of the current state
+                for n in range(len(v_trail)):
+                    discount = 0
+
+                    # n-step reward
+                    n_step_r = 0.
+                    for r in list(r_trail)[:n + 1]:
+                        n_step_r += r * (self._gamma ** discount)
+                        discount += 1
+
+                    # n-step Advantage
+                    n_step_advantage = -v + n_step_r + \
+                        (self._gamma ** discount) * list(v_trail)[n]
+                    advantages.append(n_step_advantage)
+
+                    weights.append(self._lambda ** n)
+                gae = 0.0
+                for weight, advantage in zip(weights, advantages):
+                    gae += weight / sum(weights) * advantage
+                gaes.append(gae)
 
         states = np.asarray(states, dtype=np.float16)
         actions = np.asarray(actions, dtype=np.uint8)
-        rewards = np.asarray(rewards, dtype=np.float16)
-        next_states = np.asarray(next_states, dtype=np.float16)
-        dones = np.asarray(dones, dtype=np.uint8)
-        gs = np.asarray(gs, dtype=np.float16)
+        vs = np.asarray(vs, dtype=np.float16)
+        gaes = np.asarray(gaes, dtype=np.float16)
 
-        return states, actions, rewards, next_states, dones, gs
+        return states, actions, vs, gaes
 
     def capacity(self):
         return self._capacity
