@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import defaultdict
+from torch.multiprocessing import Process, Queue, cpu_count
 
 from rl import Statistics
 
@@ -55,7 +56,8 @@ class PPO:
                 observation_shape=observation_shape,
                 horizon=self._horizon,
                 gae_lambda=gae_lambda,
-                gamma=self._gamma)
+                gamma=self._gamma,
+                v_fn=self._v)
 
     def save_model(self, filename):
         torch.save(self._net, filename)
@@ -109,16 +111,13 @@ class PPO:
         stats = Statistics()
         t0 = time.time()
         stats.set('replay_buffer_size', len(self._buffer))
-        stats.set('replay_buffer_trajectories',
-                len(self._buffer.collected_trajectories))
         if not self._buffer.ready():
             return stats
 
         self._net.train(True)
 
         # Create tensors: state, action, next_state, term
-        states, actions, target_v, advantage = self._buffer.sample(
-                self._v)
+        states, actions, target_v, advantage = self._buffer.sample()
         batch_size = len(states)
         assert batch_size == self._buffer.capacity()
 
@@ -254,6 +253,10 @@ class Trajectory:
         self.actions = np.zeros(capacity, dtype=np.uint8)
         self.rewards = np.zeros(capacity, dtype=np.float16)
         self.terminated = False  # if the final state is term state
+        self.gaes = None
+        self.v_targets = None
+        self.vs = None
+        self.vs_next = None
 
     def push(self, state, action, reward, next_state, done):
         assert not self.terminated
@@ -293,35 +296,53 @@ class TrajectoryBuffer:
             observation_shape,
             horizon,
             gamma,
-            gae_lambda):
+            gae_lambda,
+            v_fn):
         self._gamma = gamma
         self._capacity = capacity
         print("\tlambda for GAE(lambda): {}".format(gae_lambda))
-        self._weights = np.asarray([
-            gae_lambda ** n for n in range(horizon)
-        ])
-        self._discounts = np.asarray([
-            gamma ** n for n in range(horizon + 1)
-        ])
         self._trajectories = defaultdict(
             lambda: Trajectory(horizon, observation_shape)
         )
+        self._enrich_queue = Queue()
+        self._traj_queue = Queue()
+        self._v_fn = v_fn
+
+        enricher_count = cpu_count()
+        for _ in range(enricher_count):
+            p = Process(
+                    target=enrich_trajectories,
+                    args=(
+                        gamma, horizon, gae_lambda,
+                        self._enrich_queue, self._traj_queue))
+            p.start()
+        for _ in range(enricher_count):
+            self._traj_queue.get()
+
         self.reset()
 
     def reset(self):
-        self.collected_trajectories = []
+        self._records_collected = 0
 
     def push(self, state, action, reward, next_state, done, env_idx):
         traj = self._trajectories[env_idx]
         traj.push(state, action, reward, next_state, done)
         self._trajectories[env_idx] = traj
         if traj.done():
-            self.collected_trajectories.append(traj)
+            self._enrich_traj(traj)
             del self._trajectories[env_idx]
 
     def __len__(self):
-        return sum([len(traj) for traj in self.collected_trajectories]) + \
+        return self._records_collected + \
                 sum([len(traj) for traj in self._trajectories.values()])
+
+    def _enrich_traj(self, traj):
+        self._records_collected += len(traj)
+        traj.vs = self._v_fn(traj.states)
+        traj.vs_next = self._v_fn(traj.next_states)
+        if traj.terminated:
+            traj.vs_next[-1] = 0.0
+        self._enrich_queue.put_nowait(traj)
 
     def ready(self):
         return len(self) >= self._capacity
@@ -330,64 +351,35 @@ class TrajectoryBuffer:
         for _, traj in self._trajectories.items():
             if len(traj) > 0:
                 traj.close()
-                self.collected_trajectories.append(traj)
+                self._enrich_traj(traj)
         self._trajectories.clear()
 
-    def sample(self, v_fn):
+    def sample(self):
         self.finish_trajectories()
 
         v_targets = []
         gaes = []  # Generalized Advantage Estimations
 
-        for traj in self.collected_trajectories:
+        to_process = self._records_collected
 
-            # States and their values
-            vs = v_fn(traj.states)
-            vs_next = v_fn(traj.next_states)
-            if traj.terminated:
-                vs_next[-1] = 0.0
-
-            v_target = traj.rewards + self._gamma * vs_next
-            assert v_target.shape == traj.rewards.shape
-            v_targets.append(v_target)
-
-            traj_gaes = np.zeros(len(traj), dtype=np.float16)
-            for idx in range(len(traj)):
-
-                v = vs[idx]
-
-                v_trail = vs_next[idx:]
-                r_trail = traj.rewards[idx:]
-
-                # Calculate the Generalized Advantage Estimation
-                advantages = np.zeros(len(v_trail), dtype=np.float16)
-                for n in range(len(v_trail)):
-
-                    # n-step reward
-                    steps = n + 1
-                    rewards = r_trail[:steps]
-                    n_step_r = sum(rewards * self._discounts[:steps])
-
-                    # n-step Advantage
-                    n_step_advantage = -v + n_step_r + \
-                        self._discounts[steps] * v_trail[n]
-                    advantages[n] = n_step_advantage
-
-                weights = self._weights[:len(advantages)]
-                gae = sum(weights / sum(weights) * advantages)
-                traj_gaes[idx] = gae
-
-            assert len(traj.states) == len(traj_gaes)
-            gaes.append(traj_gaes)
+        trajectories = []
+        while to_process != 0:
+            traj = self._traj_queue.get()
+            trajectories.append(traj)
+            to_process -= len(traj)
 
         states = np.concatenate([
-            traj.states for traj in self.collected_trajectories
+            traj.states for traj in trajectories
         ], axis=0)
         actions = np.concatenate([
-            traj.actions for traj in self.collected_trajectories
+            traj.actions for traj in trajectories
         ], axis=0)
-        v_targets = np.concatenate(v_targets, axis=0)
-        gaes = np.concatenate(gaes, axis=0)
+        v_targets = np.concatenate([
+            traj.v_targets for traj in trajectories
+        ], axis=0)
+        gaes = np.concatenate([
+            traj.gaes for traj in trajectories
+        ], axis=0)
 
         assert len(states) == len(actions)
         assert len(states) == len(v_targets)
@@ -397,3 +389,57 @@ class TrajectoryBuffer:
 
     def capacity(self):
         return self._capacity
+
+
+def enrich_trajectories(
+        gamma, horizon, gae_lambda, src_queue, dst_queue):
+
+    dst_queue.put('READY')
+    discounts = np.asarray([
+        gamma ** n for n in range(horizon + 1)
+    ])
+    all_weights = np.asarray([
+        gae_lambda ** n for n in range(horizon)
+    ])
+
+    while True:
+        traj = src_queue.get()
+
+        # States and their values
+        vs = traj.vs
+        vs_next = traj.vs_next
+        traj.vs = None
+        traj.vs_next = None
+
+        traj.v_targets = traj.rewards + gamma * vs_next
+        assert traj.v_targets.shape == traj.rewards.shape
+
+        traj.gaes = np.zeros(len(traj), dtype=np.float16)
+        for idx in range(len(traj)):
+
+            v = vs[idx]
+
+            v_trail = vs_next[idx:]
+            r_trail = traj.rewards[idx:]
+
+            # Calculate the Generalized Advantage Estimation
+            advantages = np.zeros(len(v_trail), dtype=np.float16)
+            for n in range(len(v_trail)):
+
+                # n-step reward
+                steps = n + 1
+                rewards = r_trail[:steps]
+                n_step_r = sum(rewards * discounts[:steps])
+
+                # n-step Advantage
+                n_step_advantage = -v + n_step_r + \
+                    discounts[steps] * v_trail[n]
+                advantages[n] = n_step_advantage
+
+            weights = all_weights[:len(advantages)]
+            gae = sum(weights / sum(weights) * advantages)
+            traj.gaes[idx] = gae
+
+        assert len(traj.states) == len(traj.gaes)
+
+        dst_queue.put_nowait(traj)
