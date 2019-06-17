@@ -246,17 +246,14 @@ class Trajectory:
         self._capacity = capacity
         self._cursor = 0
 
-        self.states = np.zeros(
-                (capacity,) + observation_shape, dtype=np.float16)
-        self.next_states = np.zeros(
-                (capacity,) + observation_shape, dtype=np.float16)
+        # +1 here because we store states + one last state
+        self._states = np.zeros(
+                (capacity + 1,) + observation_shape, dtype=np.float16)
         self.actions = np.zeros(capacity, dtype=np.uint8)
         self.rewards = np.zeros(capacity, dtype=np.float16)
         self.terminated = False  # if the final state is term state
         self.gaes = None
         self.v_targets = None
-        self.vs = None
-        self.vs_next = None
 
     def push(self, state, action, reward, next_state, done):
         assert not self.terminated
@@ -264,10 +261,10 @@ class Trajectory:
 
         idx = self._cursor
 
-        self.states[idx] = state
+        self._states[idx] = state
+        self._states[idx+1] = next_state
         self.actions[idx] = action
         self.rewards[idx] = reward
-        self.next_states[idx] = next_state
 
         self._cursor += 1
 
@@ -275,9 +272,35 @@ class Trajectory:
             self.terminated = True
             self.close()
 
+    @property
+    def states(self):
+        return self._states[:self._cursor]
+
+    @property
+    def next_states(self):
+        return self._states[1:self._cursor+1]
+
+    @property
+    def vs(self):
+        return self._vs[:self._cursor]
+
+    @property
+    def vs_next(self):
+        return self._vs[1:self._cursor+1]
+
+    def update_vs(self, v_fn):
+        self._vs = v_fn(self._states)
+        if self.terminated:
+            self._vs[-1] = 0.0
+
+    # for optimization
+    def opimization_cleanup(self):
+        self._vs = None
+        self.rewards = None
+
     def close(self):
-        self.states = self.states[:self._cursor, :]
-        self.next_states = self.next_states[:self._cursor, :]
+        # +1 here because we store states + one last state
+        self._states = self._states[:self._cursor + 1, :]
         self.actions = self.actions[:self._cursor]
         self.rewards = self.rewards[:self._cursor]
 
@@ -338,10 +361,7 @@ class TrajectoryBuffer:
 
     def _enrich_traj(self, traj):
         self._records_collected += len(traj)
-        traj.vs = self._v_fn(traj.states)
-        traj.vs_next = self._v_fn(traj.next_states)
-        if traj.terminated:
-            traj.vs_next[-1] = 0.0
+        traj.update_vs(self._v_fn)
         self._enrich_queue.put_nowait(traj)
 
     def ready(self):
@@ -408,8 +428,6 @@ def enrich_trajectories(
         # States and their values
         vs = traj.vs
         vs_next = traj.vs_next
-        traj.vs = None
-        traj.vs_next = None
 
         traj.v_targets = traj.rewards + gamma * vs_next
         assert traj.v_targets.shape == traj.rewards.shape
@@ -440,6 +458,7 @@ def enrich_trajectories(
             gae = sum(weights / sum(weights) * advantages)
             traj.gaes[idx] = gae
 
-        assert len(traj.states) == len(traj.gaes)
+        traj.opimization_cleanup()
 
+        assert len(traj.states) == len(traj.gaes)
         dst_queue.put_nowait(traj)
