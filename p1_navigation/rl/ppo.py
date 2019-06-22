@@ -305,7 +305,10 @@ class Net(nn.Module):
 
         self.head_v = nn.Linear(hidden_units, 1)
         if self._is_continous:
-            self.head_mu = nn.Linear(hidden_units, 1)
+            assert len(self._action_space.shape) == 1
+            action_size = self._action_space.shape[0]
+            self.head_mu = nn.Linear(
+                    hidden_units, action_size)
             mu_scale = torch.tensor(
                     (action_space.high - action_space.low) / 2).float()
             mu_offset = torch.tensor(
@@ -314,7 +317,10 @@ class Net(nn.Module):
             self.register_buffer("mu_offset", mu_offset)
             print("\tmu scale:", self.mu_scale)
             print("\tmu offset:", self.mu_offset)
-            self.head_variance = nn.Linear(hidden_units, 1)
+            assert self.mu_scale.shape == self._action_space.shape
+            assert self.mu_offset.shape == self._action_space.shape
+            self.head_variance = nn.Linear(
+                    hidden_units, action_size)
         else:
             action_size = action_space.n
             self.head_action_logits = nn.Linear(hidden_units, action_size)
@@ -337,8 +343,9 @@ class Net(nn.Module):
             variance = F.softplus(self.head_variance(x))
             assert not torch.isnan(mu).any(), mu
             assert not torch.isnan(variance).any(), variance
-            assert mu.shape == (len(x), 1)
-            assert variance.shape == (len(x), 1)
+            assert mu.shape == (len(x),) + self._action_space.shape, mu.shape
+            assert variance.shape == (len(x),) + self._action_space.shape, \
+                variance.shape
             return mu, variance, v
         else:
             action_logits = self.head_action_logits(x)
