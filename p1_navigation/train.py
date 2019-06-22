@@ -28,7 +28,7 @@ def main(**args):
         if args[opt]:
             sess += '-' + opt
 
-    action_size = env.action_space.n
+    action_space = env.action_space
     observation_shape = env.observation_space.shape
 
     bucket = None
@@ -57,7 +57,7 @@ def main(**args):
 
     if agent_type == "qlearning":
         agent = QLearning(
-                action_size=action_size,
+                action_size=action_space.n,
                 observation_shape=observation_shape,
                 beta_decay=(iterations * training_steps),
                 ref_net=ref_net,
@@ -79,7 +79,7 @@ def main(**args):
                 epsilon_decay=args["epsilon_decay"])
     elif agent_type == "reinforce":
         agent = Reinforce(
-                action_size=action_size,
+                action_size=action_space.n,
                 observation_shape=observation_shape,
                 gamma=gamma,
                 learning_rate=learning_rate,
@@ -87,13 +87,13 @@ def main(**args):
                 baseline_learning_rate=baseline_learning_rate)
     elif agent_type == "actor-critic":
         agent = ActorCritic(
-                action_size=action_size,
+                action_size=action_space.n,
                 observation_shape=observation_shape,
                 gamma=gamma,
                 learning_rate=learning_rate)
     elif agent_type == "ppo":
         agent = PPO(
-                action_size=action_size,
+                action_space=action_space,
                 observation_shape=observation_shape,
                 n_agents=envs_count,
                 gamma=gamma,

@@ -47,6 +47,9 @@ class Statistics(object):
             'grad_max': (self.max, 'grad_max'),
             'grad_mean': (self.avg, 'grad_mean'),
             'kl': (self.avg, 'kl'),
+            'action_variance': (self.avg, 'action_variance'),
+            'action_mu_mean': (self.avg, 'action_mu_mean'),
+            'action_mu_max': (self.avg, 'action_mu_max'),
         }
 
     def set(self, key, value):

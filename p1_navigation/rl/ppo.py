@@ -2,18 +2,20 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from collections import defaultdict
 from torch.multiprocessing import Process, Queue, cpu_count
 
 from rl import Statistics
+from gym import spaces
 
 
 class PPO:
 
     def __init__(
             self,
-            action_size,
+            action_space,
             observation_shape,
             n_agents,
             gamma=0.99,
@@ -26,7 +28,7 @@ class PPO:
         print("PPO agent:")
 
         self._observation_shape = observation_shape
-        self._action_size = action_size
+        self._action_space = action_space
         self._gamma = gamma
         print("\tReward discount (gamma): {}".format(self._gamma))
         self._epsilon = epsilon
@@ -35,9 +37,7 @@ class PPO:
         self._device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
 
-        self._net = Net(
-                observation_shape,
-                action_size)
+        self._net = Net(observation_shape, action_space)
         self._net.to(self._device)
 
         # Optimizer and loss
@@ -50,14 +50,24 @@ class PPO:
         print("\tHorizon: {}".format(self._horizon))
         self._epochs = epochs
         print("\tEpochs: {}".format(self._epochs))
-
         self._buffer = TrajectoryBuffer(
                 capacity=self._horizon * n_agents,
-                observation_shape=observation_shape,
+                traj_constructor=lambda: Trajectory(
+                    horizon,
+                    observation_shape,
+                    self._action_space.dtype,
+                    self._action_space.shape),
                 horizon=self._horizon,
                 gae_lambda=gae_lambda,
                 gamma=self._gamma,
                 v_fn=self._v)
+        if self._is_continous:
+            print("\tAction space. Low: {}, high: {}".format(
+                self._action_space.low, self._action_space.high))
+
+    @property
+    def _is_continous(self):
+        return _is_continous(self._action_space)
 
     def save_model(self, filename):
         torch.save(self._net, filename)
@@ -65,18 +75,37 @@ class PPO:
     def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)
         self._net.train(False)
-        with torch.no_grad():
-            action_logits, _ = self._net(states_tensor)
-            action_logits = action_logits.double()
-            action_probs = torch.nn.Softmax(dim=1)(action_logits)
-            action_probs = action_probs.detach()
+        batch_size = len(states)
 
-        actions = []
-        for probs in action_probs:
-            action = np.random.choice(len(probs), p=probs)
-            actions.append(action)
+        if self._is_continous:
+            action_shape = (batch_size, ) + self._action_space.shape
+            with torch.no_grad():
+                actions_mu, actions_var, _ = self._net(states_tensor)
+                assert actions_mu.shape == action_shape, actions_mu
+                assert actions_var.shape == action_shape, actions_var
+                actions_arr = []
+                for action_idx in range(self._action_space.shape[0]):
+                    action_mu = actions_mu[:, action_idx]
+                    action_var = actions_var[:, action_idx]
+                    assert action_mu.shape == (batch_size,), action_mu.shape
+                    assert action_var.shape == (batch_size,), action_var.shape
+                    dist = torch.distributions.Normal(
+                            action_mu,
+                            action_var)
+                    sub_actions = dist.sample()
+                    actions_arr.append(sub_actions)
+                actions = torch.stack(actions_arr, dim=1)
+                # Each action can consist of multiple sub-actions
+                assert actions.shape == action_shape, actions.shape
+        else:
+            with torch.no_grad():
+                action_logits, _, _ = self._net(states_tensor)
+                dist = torch.distributions.categorical.Categorical(
+                        logits=action_logits)
+                actions = dist.sample()
+                assert actions.shape == (len(states),), actions
+        actions = actions.detach().cpu().numpy()
 
-        assert len(actions) == len(states)
         return actions
 
     def episodes_end(self):
@@ -100,7 +129,7 @@ class PPO:
         states_tensor = torch.tensor(states).float().to(self._device)
         assert states_tensor.shape == (len(states),) + self._observation_shape
         with torch.no_grad():
-            _, v = self._net(states_tensor)
+            _, _, v = self._net(states_tensor)
             v = v.cpu().numpy()
         assert v.shape == (len(states), 1)
         v = np.squeeze(v, axis=1)
@@ -122,49 +151,79 @@ class PPO:
         assert batch_size == self._buffer.capacity()
 
         states = torch.from_numpy(states).float().to(self._device)
-        actions = torch.from_numpy(actions).long().to(self._device)
-        actions = torch.unsqueeze(actions, dim=1)
-        advantage = torch.from_numpy(advantage).float().to(self._device)
-        advantage = torch.unsqueeze(advantage, dim=1)
+        actions = torch.from_numpy(actions).to(self._device)
+        if self._is_continous:
+            actions_shape = (batch_size, ) + self._action_space.shape
+            actions = actions.float()
+        else:
+            actions_shape = (batch_size, )
+            actions = actions.long()
+        assert actions.shape == actions_shape, actions.shape
         target_v = torch.from_numpy(target_v).float().to(self._device)
         target_v = torch.unsqueeze(target_v, dim=1)
 
-        # Estimate advantage
-        with torch.no_grad():
-            advantage = advantage / torch.std(advantage)
-            advantage = advantage.detach()
-            assert advantage.shape == (batch_size, 1)
-            stats.set('advantage', advantage.abs().mean())
+        advantage = torch.from_numpy(advantage).float().to(self._device)
+        advantage = advantage / advantage.std()
+        advantage = advantage.detach()
+        assert not torch.isnan(advantage).any(), advantage
+        if self._is_continous:
+            advantage = torch.unsqueeze(advantage, dim=1)
+            assert advantage.shape == (batch_size, 1), advantage.shape
+        else:
+            assert advantage.shape == (batch_size,)
+        stats.set('advantage', advantage.abs().mean())
 
         # Iteratively optimize the network
-        softmax = torch.nn.Softmax(dim=1)
-        log_softmax = torch.nn.LogSoftmax(dim=1)
         critic_loss_fn = nn.MSELoss()
 
         # Action probabilities of the network before optimization
-        old_action_probs = None
+        old_log_probs = None
+        old_dist = None
 
         for _ in range(self._epochs):
-            action_logits, v = self._net(states)
 
             # Calculate Actor Loss
-            assert action_logits.shape == (batch_size, self._action_size)
+            if self._is_continous:
+                actions_mu, actions_var, v = self._net(states)
+                assert actions_var.shape == actions_shape, actions_var.shape
+                assert actions_mu.shape == actions_shape, actions_mu.shape
+                assert len(self._action_space.shape) == 1
+                log_probs_arr = []
+                for action_idx in range(self._action_space.shape[0]):
+                    action_mu = actions_mu[:, action_idx]
+                    action_var = actions_var[:, action_idx]
+                    assert action_mu.shape == (batch_size,), action_mu.shape
+                    assert action_var.shape == (batch_size,), action_var.shape
+                    dist = torch.distributions.Normal(action_mu, action_var)
+                    sub_actions = actions[:, action_idx]
+                    assert sub_actions.shape == (batch_size,)
+                    log_probs = dist.log_prob(sub_actions)
+                    log_probs_arr.append(log_probs)
+                log_probs = torch.stack(log_probs_arr, dim=1)
+            else:
+                action_logits, _, v = self._net(states)
+                assert action_logits.shape == (
+                        batch_size, self._action_space.n)
+                dist = torch.distributions.categorical.Categorical(
+                        logits=action_logits)
+                log_probs = dist.log_prob(actions)
+            assert log_probs.shape == actions_shape, log_probs.shape
 
-            action_probs = softmax(action_logits).gather(dim=1, index=actions)
-            assert action_probs.shape == (batch_size, 1)
+            if old_log_probs is None:
+                old_log_probs = log_probs.detach()
+                old_dist = dist
 
-            if old_action_probs is None:
-                old_action_probs = action_probs.detach()
+            r = (log_probs - old_log_probs).exp()
 
-            r = action_probs / old_action_probs
-            assert r.shape == (batch_size, 1)
+            assert not torch.isnan(r).any(), r
+            assert r.shape == actions_shape, r.shape
             obj = torch.min(
                     r * advantage,
                     torch.clamp(
                         r, 1. - self._epsilon, 1. + self._epsilon) * advantage)
-            assert obj.shape == (batch_size, 1)
+            assert obj.shape == actions_shape, obj.shape
 
-            # minus here because optimizer is going to *minimize* the
+            # Minus is here because optimizer is going to *minimize* the
             # loss. If we were going to update the weights manually,
             # (without optimizer) we would remove the -1.
             actor_loss = -obj.mean()
@@ -187,7 +246,9 @@ class PPO:
             for p in self._net.parameters():
                 if p.grad is not None:
                     stats.set('grad_max', p.grad.abs().max().detach())
-                    stats.set('grad_mean', (p.grad ** 2).mean().sqrt().detach())
+                    stats.set(
+                            'grad_mean',
+                            (p.grad ** 2).mean().sqrt().detach())
 
         self._buffer.reset()
 
@@ -197,18 +258,22 @@ class PPO:
         stats.set('ppo_optimization_samples', batch_size)
 
         # Log entropy metric (opposite to confidence)
-        action_logits, _ = self._net(states)
-        action_probs = softmax(action_logits)
-        action_log_probs = log_softmax(action_logits)
-        entropy = -(action_probs * action_log_probs).sum(dim=1).mean()
-        stats.set('entropy', entropy.detach())
+        if self._is_continous:
+            action_mu, action_var, _ = self._net(states)
+            stats.set('action_variance', action_var.mean().detach())
+            stats.set(
+                    'action_mu_mean',
+                    (action_mu ** 2).mean().sqrt().detach())
+            stats.set(
+                    'action_mu_max',
+                    action_mu.abs().max().detach())
+
+        stats.set('entropy', dist.entropy().mean().detach())
 
         # Log Kullback-Leibler divergence between the new
         # and the old policy.
-        kl = -(
-                (action_probs / old_action_probs).log() * old_action_probs
-            ).sum(dim=1).mean()
-        stats.set('kl', kl.detach())
+        kl = torch.distributions.kl.kl_divergence(dist, old_dist)
+        stats.set('kl', kl.mean().detach())
 
         return stats
 
@@ -218,38 +283,78 @@ class Net(nn.Module):
     def __init__(
             self,
             observation_size,
-            action_size):
+            action_space):
         super(Net, self).__init__()
 
         self.is_dense = len(observation_size) == 1
+        self._action_space = action_space
 
         hidden_units = 128
         assert self.is_dense
 
-        self.middleware = nn.Sequential(
+        self.middleware_critic = nn.Sequential(
+                nn.Linear(observation_size[0], hidden_units),
+                nn.ReLU(),
+                nn.Linear(hidden_units, hidden_units),
+                nn.ReLU())
+        self.middleware_actor = nn.Sequential(
                 nn.Linear(observation_size[0], hidden_units),
                 nn.ReLU(),
                 nn.Linear(hidden_units, hidden_units),
                 nn.ReLU())
 
-        self.head_actions = nn.Linear(hidden_units, action_size)
         self.head_v = nn.Linear(hidden_units, 1)
+        if self._is_continous:
+            self.head_mu = nn.Linear(hidden_units, 1)
+            mu_scale = torch.tensor(
+                    (action_space.high - action_space.low) / 2).float()
+            mu_offset = torch.tensor(
+                    (action_space.high + action_space.low) / 2).float()
+            self.register_buffer("mu_scale", mu_scale)
+            self.register_buffer("mu_offset", mu_offset)
+            print("\tmu scale:", self.mu_scale)
+            print("\tmu offset:", self.mu_offset)
+            self.head_variance = nn.Linear(hidden_units, 1)
+        else:
+            action_size = action_space.n
+            self.head_action_logits = nn.Linear(hidden_units, action_size)
 
-    def forward(self, x):
-        x = self.middleware(x)
-        return self.head_actions(x), self.head_v(x)
+    @property
+    def _is_continous(self):
+        return _is_continous(self._action_space)
+
+    def forward(self, states):
+        x = self.middleware_critic(states)
+        v = self.head_v(x)
+
+        x = self.middleware_actor(states)
+        assert v.shape == (len(x), 1)
+        if self._is_continous:
+            mu = self.head_mu(x)
+            assert not torch.isnan(mu).any(), mu
+            mu = F.tanh(mu)
+            mu = mu * self.mu_scale + self.mu_offset
+            variance = F.softplus(self.head_variance(x))
+            assert not torch.isnan(mu).any(), mu
+            assert not torch.isnan(variance).any(), variance
+            assert mu.shape == (len(x), 1)
+            assert variance.shape == (len(x), 1)
+            return mu, variance, v
+        else:
+            action_logits = self.head_action_logits(x)
+            return action_logits, None, v
 
 
 class Trajectory:
 
-    def __init__(self, capacity, observation_shape):
+    def __init__(self, capacity, observation_shape, action_type, action_shape):
         self._capacity = capacity
         self._cursor = 0
 
         # +1 here because we store states + one last state
         self._states = np.zeros(
                 (capacity + 1,) + observation_shape, dtype=np.float16)
-        self.actions = np.zeros(capacity, dtype=np.uint8)
+        self.actions = np.zeros((capacity,) + action_shape, dtype=action_type)
         self.rewards = np.zeros(capacity, dtype=np.float16)
         self.terminated = False  # if the final state is term state
         self.gaes = None
@@ -263,6 +368,7 @@ class Trajectory:
 
         self._states[idx] = state
         self._states[idx+1] = next_state
+        assert action.shape == self.actions[idx].shape
         self.actions[idx] = action
         self.rewards[idx] = reward
 
@@ -316,7 +422,7 @@ class TrajectoryBuffer:
     def __init__(
             self,
             capacity,
-            observation_shape,
+            traj_constructor,
             horizon,
             gamma,
             gae_lambda,
@@ -324,9 +430,7 @@ class TrajectoryBuffer:
         self._gamma = gamma
         self._capacity = capacity
         print("\tlambda for GAE(lambda): {}".format(gae_lambda))
-        self._trajectories = defaultdict(
-            lambda: Trajectory(horizon, observation_shape)
-        )
+        self._trajectories = defaultdict(traj_constructor)
         self._enrich_queue = Queue()
         self._traj_queue = Queue()
         self._v_fn = v_fn
@@ -462,3 +566,7 @@ def enrich_trajectories(
 
         assert len(traj.states) == len(traj.gaes)
         dst_queue.put_nowait(traj)
+
+
+def _is_continous(action_space):
+    return isinstance(action_space, spaces.Box)
