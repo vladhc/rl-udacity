@@ -159,13 +159,22 @@ class UnityEnvAdapter:
 
     def step(self, actions):
         """ return next_state, action, reward, None """
+        stats = Statistics()
+        t0 = time.time()
+
         brain_info = self._env.step(actions)[self._brain_name]
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
         dones = brain_info.local_done
-        states = self.states
         self.states = next_states
-        return states, actions, rewards, next_states, dones
+
+        stats.set("steps", self.n_agents)
+        stats.set("rewards", sum(rewards))
+        stats.set("env_time", time.time() - t0)
+        if sum(dones) > 0:
+            stats.set("episodes", sum(dones))
+
+        return rewards, next_states, dones, stats
 
     def reset(self):
         """ return state """
