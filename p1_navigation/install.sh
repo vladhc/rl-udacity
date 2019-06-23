@@ -2,6 +2,20 @@
 
 set -eu
 
+if [ ! -f ./environments/Reacher_Linux_NoVis/Reacher.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/Reacher_Linux_NoVis.zip
+  unzip Reacher_Linux_NoVis.zip
+  rm Reacher_Linux_NoVis.zip
+  mv Reacher_Linux_NoVis ./environments/Reacher_Linux_NoVis
+fi
+
+if [ ! -f ./environments/Reacher_Linux_NoVis_single/Reacher.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/one_agent/Reacher_Linux_NoVis.zip
+  unzip Reacher_Linux_NoVis.zip
+  rm Reacher_Linux_NoVis.zip
+  mv Reacher_Linux_NoVis ./environments/Reacher_Linux_NoVis_single
+fi
+
 if [ ! -f ./environments/Reacher_Linux_single/Reacher.x86_64 ]; then
   wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/one_agent/Reacher_Linux.zip
   unzip Reacher_Linux.zip

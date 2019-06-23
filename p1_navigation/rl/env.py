@@ -171,7 +171,7 @@ class UnityEnvAdapter:
         stats.set("steps", self.n_agents)
         stats.set("rewards", sum(rewards))
         stats.set("env_time", time.time() - t0)
-        if sum(dones) > 0:
+        if dones.any():
             stats.set("episodes", sum(dones))
 
         return rewards, next_states, dones, stats
