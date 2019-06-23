@@ -165,7 +165,7 @@ class UnityEnvAdapter:
         brain_info = self._env.step(actions)[self._brain_name]
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
-        dones = brain_info.local_done
+        dones = np.asarray(brain_info.local_done)
         self.states = next_states
 
         stats.set("steps", self.n_agents)
@@ -184,4 +184,7 @@ class UnityEnvAdapter:
         return self.states
 
     def render(self):
+        return
+
+    def close(self):
         return
