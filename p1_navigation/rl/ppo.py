@@ -163,7 +163,7 @@ class PPO:
         target_v = torch.unsqueeze(target_v, dim=1)
 
         advantage = torch.from_numpy(advantage).float().to(self._device)
-        advantage = advantage / advantage.std()
+        advantage = (advantage - advantage.mean()) / advantage.std()
         advantage = advantage.detach()
         assert not torch.isnan(advantage).any(), advantage
         if self._is_continous:
@@ -238,6 +238,7 @@ class PPO:
             loss = critic_loss + actor_loss
             self._optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self._net.parameters(), 30.0)
             self._optimizer.step()
 
             stats.set('loss_actor', actor_loss.detach())
@@ -319,8 +320,8 @@ class Net(nn.Module):
             print("\tmu offset:", self.mu_offset)
             assert self.mu_scale.shape == self._action_space.shape
             assert self.mu_offset.shape == self._action_space.shape
-            self.head_variance = nn.Linear(
-                    hidden_units, action_size)
+            self.register_parameter('head_variance',
+                    nn.Parameter(torch.zeros(action_size)))
         else:
             action_size = action_space.n
             self.head_action_logits = nn.Linear(hidden_units, action_size)
@@ -330,22 +331,23 @@ class Net(nn.Module):
         return _is_continous(self._action_space)
 
     def forward(self, states):
+        batch_size = len(states)
         x = self.middleware_critic(states)
         v = self.head_v(x)
 
         x = self.middleware_actor(states)
-        assert v.shape == (len(x), 1)
+        assert v.shape == (batch_size, 1)
         if self._is_continous:
+            actions_shape = (batch_size,) + self._action_space.shape
             mu = self.head_mu(x)
             assert not torch.isnan(mu).any(), mu
             mu = F.tanh(mu)
             mu = mu * self.mu_scale + self.mu_offset
-            variance = F.softplus(self.head_variance(x))
+            variance = F.softplus(self.head_variance.repeat(batch_size, 1))
             assert not torch.isnan(mu).any(), mu
             assert not torch.isnan(variance).any(), variance
-            assert mu.shape == (len(x),) + self._action_space.shape, mu.shape
-            assert variance.shape == (len(x),) + self._action_space.shape, \
-                variance.shape
+            assert mu.shape == actions_shape, mu.shape
+            assert variance.shape == actions_shape, variance.shape
             return mu, variance, v
         else:
             action_logits = self.head_action_logits(x)
