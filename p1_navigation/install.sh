@@ -2,6 +2,20 @@
 
 set -eu
 
+if [ ! -f ./environments/Crawler_Linux/Crawler.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Crawler/Crawler_Linux.zip
+  unzip Crawler_Linux.zip
+  rm Crawler_Linux.zip
+  mv Crawler_Linux ./environments/Crawler_Linux
+fi
+
+if [ ! -f ./environments/Crawler_Linux_NoVis/Crawler.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Crawler/Crawler_Linux_NoVis.zip
+  unzip Crawler_Linux_NoVis.zip
+  rm Crawler_Linux_NoVis.zip
+  mv Crawler_Linux_NoVis ./environments/Crawler_Linux_NoVis
+fi
+
 if [ ! -f ./environments/Reacher_Linux_NoVis/Reacher.x86_64 ]; then
   wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/Reacher_Linux_NoVis.zip
   unzip Reacher_Linux_NoVis.zip

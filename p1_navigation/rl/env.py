@@ -10,7 +10,7 @@ from rl import Statistics
 
 
 def create_env(env_id, count=1):
-    if env_id.startswith("banana") or env_id.startswith("reacher"):
+    if env_id.startswith("banana") or env_id.startswith("reacher") or env_id.startswith("crawler"):
         env = createUnityEnv(env_id)
     else:
         env = MultiGymEnv(env_id, count=count)
@@ -104,6 +104,8 @@ def createUnityEnv(env_id):
         single = env_id.endswith("-single")
         f = "Reacher_Linux_single/Reacher.x86_64" if single \
             else "Reacher_Linux/Reacher.x86_64"
+    elif env_id.startswith("crawler"):
+        f = "Crawler_Linux/Crawler.x86_64"
     f = "environments/{}".format(f)
     env = UnityEnvironment(file_name=f)
     return UnityEnvAdapter(env)
