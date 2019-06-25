@@ -78,8 +78,8 @@ class Runner(object):
         agent_stats = Statistics()
 
         self._agent.eval = not is_training
-        min_steps = self._training_steps * self._env.n_agents if is_training \
-            else self._evaluation_steps
+        min_steps = (self._training_steps if is_training
+                     else self._evaluation_steps) * self._env.n_agents
 
         self._env.reset()
         while stats.sum("steps") < min_steps:
