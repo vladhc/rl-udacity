@@ -50,7 +50,7 @@ Actor network:
 
 1. Middleware #1: `state_size` → 128; Leaky ReLU
 2. Middleware #2: 128 → 128; Leaky ReLU
-3. Action Head #2: 128 → `action_size`. In case of continous environment the Tanh activation function is used and output is interpreted as 'mu' value of Gaussian distribution. The 'sigma' value of the distribution is read from the separate parameter of the network, which doesn't depend on state.
+3. Action Head #2: 128 → `action_size`. In case of continous environment the Tanh activation function is used and output is interpreted as `mu` value of Gaussian distribution. The `sigma` value of the distribution is read from the separate parameter of the network, which doesn't depend on state.
 
 ## Running trained agent on Banana environment
 
@@ -70,7 +70,6 @@ Reward #91: 39.207999123632916; Average: 39.07074912670073
 Reward #92: 39.124499125499284; Average: 39.088665792966914
 Reward #93: 39.02699912767858; Average: 39.07324912664483
 Reward #94: 38.95449912929907; Average: 39.04949912717568
-```
 Reward #95: 39.07299912665039; Average: 39.0534157937548
 Reward #96: 39.19499912392348; Average: 39.0736419837789
 Reward #97: 39.18449912415818; Average: 39.08749912632631
