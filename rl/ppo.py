@@ -407,6 +407,7 @@ class Trajectory:
         self._vs = v_fn(self._states)
         if self.terminated:
             self._vs[-1] = 0.0
+        assert not np.isnan(self._vs).any(), self._vs
 
     # for optimization
     def opimization_cleanup(self):
@@ -549,9 +550,12 @@ def enrich_trajectories(
         for idx in range(len(traj)):
 
             v = vs[idx]
+            assert not np.isnan(v).any(), v
 
             v_trail = vs_next[idx:]
             r_trail = traj.rewards[idx:]
+            assert not np.isnan(r_trail).any(), r_trail
+            assert not np.isnan(v_trail).any(), v_trail
 
             # Calculate the Generalized Advantage Estimation
             advantages = np.zeros(len(v_trail), dtype=np.float16)
@@ -561,6 +565,7 @@ def enrich_trajectories(
                 steps = n + 1
                 rewards = r_trail[:steps]
                 n_step_r = sum(rewards * discounts[:steps])
+                assert not np.isnan(n_step_r).any(), n_step_r
 
                 # n-step Advantage
                 n_step_advantage = -v + n_step_r + \
@@ -569,6 +574,7 @@ def enrich_trajectories(
 
             weights = all_weights[:len(advantages)]
             gae = sum(weights / sum(weights) * advantages)
+            assert not np.isnan(gae).any(), gae
             traj.gaes[idx] = gae
 
         traj.opimization_cleanup()
