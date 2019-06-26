@@ -52,7 +52,7 @@ Actor network:
 2. Middleware #2: 128 → 128; Leaky ReLU
 3. Action Head: 128 → `action_size`. In case of continuous environment the Tanh activation function is used and output is interpreted as `mu` value of Gaussian distribution. The `sigma` value of the distribution is read from the separate parameter of the network, which doesn't depend on the state.
 
-## Running trained agent on Banana environment
+## Running trained agent
 
 Trained agents having fun (Pytorch checkpoint included):
 
