@@ -50,7 +50,7 @@ def play_episode(env, sample_action):
         actions = sample_action(env.states)
         rewards, _, dones, _ = env.step(actions)
         env.render()
-        time.sleep(0.01)
+        time.sleep(0.02)
         reward_acc += np.average(rewards)
         if dones.any():
             break

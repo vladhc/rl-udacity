@@ -9,9 +9,18 @@ from unityagents import UnityEnvironment
 from rl import Statistics
 
 
+unity_envs = {
+        "banana":  "Banana_Linux/Banana.x86_64",
+        "reachersingle": "Reacher_Linux_single/Reacher.x86_64",
+        "reacher": "Reacher_Linux/Reacher.x86_64",
+        "crawler": "Crawler_Linux/Crawler.x86_64",
+}
+
+
 def create_env(env_id, count=1):
-    if env_id.startswith("banana") or env_id.startswith("reacher") or env_id.startswith("crawler"):
-        env = createUnityEnv(env_id)
+    if env_id in unity_envs:
+        render = count == 1
+        env = createUnityEnv(env_id, render=render)
     else:
         env = MultiGymEnv(env_id, count=count)
     print("Created {} environment. Instances: {}".format(env_id, count))
@@ -95,19 +104,16 @@ class WrapNormalizeState(gym.ObservationWrapper):
         return x
 
 
-def createUnityEnv(env_id):
-    if env_id.startswith("banana"):
-        render = env_id.endswith("-vis")
-        f = "Banana_Linux/Banana.x86_64" if render \
-            else "Banana_Linux_NoVis/Banana.x86_64"
-    elif env_id.startswith("reacher"):
-        single = env_id.endswith("-single")
-        f = "Reacher_Linux_single/Reacher.x86_64" if single \
-            else "Reacher_Linux/Reacher.x86_64"
-    elif env_id.startswith("crawler"):
-        f = "Crawler_Linux/Crawler.x86_64"
-    f = "environments/{}".format(f)
-    env = UnityEnvironment(file_name=f)
+def createUnityEnv(env_id, render=False):
+    file_name = unity_envs[env_id]
+
+    if not render:
+        # Reacher_Linux/Reacher.x86_64 → Reacher_Linux_NoVis/Reacher.x86_64
+        slash_idx = file_name.index("/")
+        file_name = file_name[:slash_idx] + "_NoVis" + file_name[slash_idx:]
+
+    file_name = "environments/{}".format(file_name)
+    env = UnityEnvironment(file_name=file_name)
     return UnityEnvAdapter(env)
 
 
@@ -167,6 +173,7 @@ class UnityEnvAdapter:
         brain_info = self._env.step(actions)[self._brain_name]
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
+        rewards = np.asarray(rewards)
         dones = np.asarray(brain_info.local_done)
         self.states = next_states
 
