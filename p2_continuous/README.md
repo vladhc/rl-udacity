@@ -1,8 +1,8 @@
 ## Solution of the Reacher enviroment
 
-Used Proximal Policy Optimization network. Key points:
+Used Proximal Policy Optimization algorithm. Key points:
 * Both Continuous and Discreete action spaces are supported;
-* Implementation [Generalized Advantage Estimation] (https://arxiv.org/abs/1506.02438);
+* Implementation [Generalized Advantage Estimation](https://arxiv.org/abs/1506.02438);
 * Parallel computation of the GAE using Python `multiprocessing` module. That gives x2-x5 faster training times;
 * Advantage Normalization;
 * Whole experience buffer is used as a single batch during optimization stage. That allowed to keep code more simple and worked well on the current environments;
