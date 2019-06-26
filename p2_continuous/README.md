@@ -20,7 +20,7 @@ In order to run training locally, run the `train-reacher.sh` script, which is lo
 
 ![play](https://github.com/vladhc/rl-udacity/raw/master/p2_continuous/training-graph.png "Training graph")
 
-I have a bug which somehow scales the average reward on the reacher environment (yes, that's really a bug). The Y axis on the training graph has wrong scale. Probably it should be multiplied by the number of agents (20). Anyway, the training can be reproduced (it's pretty stable) and there is a trained checkpoint in the repo.
+I have a bug which somehow scales the average reward on the reacher environment (yes, that's really a bug). The Y axis on the training graph has wrong scale. Anyway, the training can be reproduced (it's pretty stable) and there is a trained checkpoint in the repo.
 
 Two training attempts were done, which differ only in learning rate: first one with 0.00005 and second with 0.0002.
 
