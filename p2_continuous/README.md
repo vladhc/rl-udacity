@@ -54,7 +54,7 @@ Actor network:
 
 ## Running trained agent
 
-Trained agents having fun (Pytorch checkpoint included):
+Video of original trained agent having fun (Pytorch checkpoint included):
 
 ![play](https://github.com/vladhc/rl-udacity/raw/master/p2_continuous/reacher.gif "Agent playing Reacher environment")
 
