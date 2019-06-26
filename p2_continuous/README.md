@@ -2,12 +2,12 @@
 
 Used Proximal Policy Optimization network. Key points:
 * Both Continuous and Discreete action spaces are supported;
-* Implementation [Generalized Advantage Estimation] (https://arxiv.org/abs/1506.02438.pdf);
+* Implementation [Generalized Advantage Estimation] (https://arxiv.org/abs/1506.02438);
 * Parallel computation of the GAE using Python `multiprocessing` module. That gives x2-x5 faster training times;
 * Advantage Normalization;
 * Whole experience buffer is used as a single batch during optimization stage. That allowed to keep code more simple and worked well on the current environments;
 
-It was easier to implement first discreete action space. Then the GAE was implemented. When these parts was working the Continuous action space was added.
+It was easier to first implement the discreete action space. Then the GAE was implemented. When these parts was working the Continuous action space was added.
 Separate benchmark were done on the CartPole, LunarLander (both discreete and continuous versions) and Pendulum environments in order to make quick tests and make sure that algorithm correctly works on different range of tasks.
 
 ## Installation
@@ -50,16 +50,18 @@ Actor network:
 
 1. Middleware #1: `state_size` → 128; Leaky ReLU
 2. Middleware #2: 128 → 128; Leaky ReLU
-3. Action Head #2: 128 → `action_size`. In case of continous environment the Tanh activation function is used and output is interpreted as `mu` value of Gaussian distribution. The `sigma` value of the distribution is read from the separate parameter of the network, which doesn't depend on state.
+3. Action Head: 128 → `action_size`. In case of continuous environment the Tanh activation function is used and output is interpreted as `mu` value of Gaussian distribution. The `sigma` value of the distribution is read from the separate parameter of the network, which doesn't depend on the state.
 
 ## Running trained agent on Banana environment
 
+Trained agents having fun (Pytorch checkpoint included):
+
 ![play](https://github.com/vladhc/rl-udacity/raw/master/p2_continuous/reacher.gif "Agent playing Reacher environment")
 
-
-First copy the saved network from the cloud to the local machine:
+First, copy the saved network from the github to the local machine:
 `wget https://github.com/vladhc/rl-udacity/raw/master/p2_continuous/reacher-ppo-643.pth`
 and then run visualization:
+
 `python play.py --checkpoint reacher-ppo-643.pth`
 
 This renders the environment, runs multiple episodes and outputs the average reward. Here is an example of running `play.py` of the trained agend on 100 episodes:
@@ -80,7 +82,7 @@ Reward #100: 39.08099912647161; Average: 39.10577185319061
 
 ## Other thoughts
 
-* PPO appeared to be very a stable algorithm (comparing to DQN). As soon, as bugs were fixed, it progressively trained on every environment nearly without hyperparameter tweaks from one env to another.
+* PPO appeared to be pretty stable (comparing to DQN). As soon, as bugs were fixed, it progressively trained on every environment nearly without hyperparameter tweaks from one env to another.
 * I had problems implementing exploration in continous action space. If the variance of the action was depending on the state, the agent quickly stopped exploring, converging to local minimum. Entropy bonus is supposed to be used only in the discreete action set. Adding random noise to actions doesn't work either - it leads to divisions by zero in `R=new_P/old_p` coefficient calculation (there are always chances that action with noise has zero probability to be sampled under the current distribution). Adding small values to the denominator lead to permanent distortion of the policy. The only simple solution I found, was to make the variance a separate parameter of the network, which doesn't depend on the state. This allowed agent to spend more time exploring. If you know of other relatively simple ways of making agent explore - please let me know.
 * Also having action variance as a separate parameter allowed to easier analyze what's happening with the network: if the network was performing good with high variance and the variance is decreasing, than stable improvement of the performance should be expected even if the reward graph doesn't go up for some time.
 * Making parallel computation of GAE gave a good impact on the training process and allowed to develop and debug faster. I also tried to run parallel environments, but that surprisingly slowed down the training speed. Most probably, the overhead on communication between processes kills the whole benefit of such optimization. Long live the Global Interpreter Lock!

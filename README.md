@@ -5,7 +5,7 @@ This set of python files represents a small RL library. It's main point is simpl
 This library allows storing results in the Google Cloud Platform. This is beneficial, when we want to use multiple VMs for training, or want to run training for a long period of time.
 
 ## Installation
-`install.sh` Will download all the environements. Python libraries from the [Udacity RL project](https://github.com/udacity/deep-reinforcement-learning) should be installed beforehand. If you want to get other trained checkpoints from my storage bucket, you will also need the [gsutils](https://cloud.google.com/storage/docs/gsutil_install) tool for getting files from Google Cloud Platofrm.
+`install.sh` will download all the environements. Python libraries from the [Udacity RL project](https://github.com/udacity/deep-reinforcement-learning) should be installed beforehand. If you want to get other trained checkpoints from my storage bucket, you will also need the [gsutils](https://cloud.google.com/storage/docs/gsutil_install) tool for getting files from Google Cloud Platofrm.
 
 ## Training
 Training is done through iterations. Number of iterations is defined via the `iterations` parameter.
