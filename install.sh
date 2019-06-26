@@ -2,6 +2,20 @@
 
 set -eu
 
+if [ ! -f ./environments/Tennis_Linux/Tennis.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Linux.zip
+  unzip Tennis_Linux.zip
+  rm Tennis_Linux.zip
+  mv Tennis_Linux ./environments/Tennis_Linux
+fi
+
+if [ ! -f ./environments/Tennis_Linux_NoVis/Tennis.x86_64 ]; then
+  wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Linux_NoVis.zip
+  unzip Tennis_Linux_NoVis.zip
+  rm Tennis_Linux_NoVis.zip
+  mv Tennis_Linux_NoVis ./environments/Tennis_Linux_NoVis
+fi
+
 if [ ! -f ./environments/Crawler_Linux/Crawler.x86_64 ]; then
   wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Crawler/Crawler_Linux.zip
   unzip Crawler_Linux.zip
