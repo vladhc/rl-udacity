@@ -1,8 +1,6 @@
-## One more RL library
+## Solution of the Bananas environment
 
-This set of python files represents a small RL library. It's main point is simplicity - the amount of code should be minimal. It's purpose is to implement algorithms for solving the Udacity RL Nanodegree projects.
-
-Currently in contains implementation of the Deep Q-Learning network with the following improvements:
+Used implementation of the Deep Q-Learning network with the following improvements:
 * [Double Q-Learning](https://arxiv.org/pdf/1509.06461.pdf)
 * [Prioritirized Experience Replay](https://arxiv.org/pdf/1511.05952.pdf)
 * [Dueling Network architecture](https://arxiv.org/pdf/1511.06581.pdf)
@@ -10,8 +8,6 @@ Currently in contains implementation of the Deep Q-Learning network with the fol
 * Soft updates
 
 For each improvement a separate benchmark was done on the CartPole and LunarLander environments in order to make sure, that they really add value to the baseline model.
-
-This library allows storing results in the Google Cloud Platform. This is beneficial, when we want to use multiple VMs for training, or want to run training for a long period of time.
 
 ## Some beautiful graphs
 
@@ -28,23 +24,15 @@ A few lunar lander agents. Gray - only "double" feature is enabled, red - only "
 ![training graph](https://github.com/vladhc/rl-udacity/raw/master/p1_navigation/imgs/lunar-lander.png "Lunar lander training graph")
 
 ## Installation
-`install.sh` Will download the Banana environement. Python libraries from the [Udacity RL project](https://github.com/udacity/deep-reinforcement-learning) should be installed beforehand. If you want to get other trained checkpoints from my storage bucket, you will also need the [gsutils](https://cloud.google.com/storage/docs/gsutil_install) tool for getting files from Google Cloud Platofrm.
+
+See [library installation](../README.md)
 
 ## Training
-`train-banana.sh`
+`train-banana.sh` which is located in the root folder of the library.
 This script contains predifined set of hyper parameters. Running this script doesn't mean you will get working agent on the first run. But you will get it eventually, when the random seed would be nice (see also "Other thoughts section").
 There are also scripts for training benchmarks: `train-cartpole.sh` and `train-lunarlander.sh`. They train agents turning only certain features. It's convenient for comparing how each feature influences the training.
 
-Training is done through iterations. Number of iterations is defined via the `iterations` parameter.
-Each iteration consists of 2 phases:
-1. Training. It runs at least `steps` steps;
-2. Evaluation. Runs at least `eval_steps`. During the evaluation phase network is not trained, replay buffer is not updated and the noisy layers don't change their noise parameters. Only the reward is calculated.
-
-For getting a full list of training parameters run `python train.py`.
-
-Adam Optimizer was used. I haven't experimented with other optimizers. Adam was chosen just because it was used in the Rainbow paper. They told it's "less sensitive to the choice of the learning rate than RMSProp".
-
-Trained models are stored in the `checkpoins` folder and TensorBoard statistics is written into the `train` folder.
+Adam Optimizer was used for the DQN. I haven't experimented with other optimizers. Adam was chosen just because it was used in the Rainbow paper. They told it's "less sensitive to the choice of the learning rate than RMSProp".
 
 ## Architecture
 Only Fully Connected layers are used. Layers 2-6 are noisy linear layers, when this feature is enabled.
@@ -60,7 +48,7 @@ I wasn't varying much amount of hidden units. Number of 128 units was chosen bec
 
 ## Running trained agent on Banana environment
 First copy the saved network from the cloud to the local machine:
-`wget https://github.com/vladhc/rl-udacity/raw/master/p1_navigation/checkpoints/banana-double-dueling-noisy-3306.pth`
+`wget https://github.com/vladhc/rl-udacity/raw/master/p1_navigation/banana-double-dueling-noisy-3306.pth`
 and then run visualization:
 `python play.py --env banana-vis --checkpoint banana-double-dueling-noisy-3306.pth`
 
