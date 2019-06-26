@@ -20,6 +20,7 @@ def main(checkpoint):
             "carcont": "MountainCarContinuous-v0",
             "pendulum": "Pendulum-v0",
             "reacher": "reacher",
+            "crawler": "crawler",
             "banana": "banana",
             }[file_prefix]
     s = s[1:]
