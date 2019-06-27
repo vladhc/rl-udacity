@@ -51,7 +51,7 @@ Actor network:
 ## Trained agend
 ![play](./reacher.gif "Agent playing Reacher environment")
 
-After training 80 iterations the agent reaches target score [33.9 on 100 episodes](./reacher-ppo-80-rewards.csv) (one iteration plays one episode). After training on 640 iterations agent reaches average score of [39.1 on 100 episodes](./reacher-ppo-640-rewards.csv). 
+After training 80 iterations the agent reaches target score [33.9 on 100 episodes](./reacher-ppo-80-rewards.csv) (one iteration plays one episode). After training on 643 iterations agent reaches average score of [39.1 on 100 episodes](./reacher-ppo-643-rewards.csv). 
 
 ![evaluation](./evaluation.png "Evaluation graph of the trained agent")
 
