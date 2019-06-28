@@ -14,6 +14,7 @@ unity_envs = {
         "reachersingle": "Reacher_Linux_single/Reacher.x86_64",
         "reacher": "Reacher_Linux/Reacher.x86_64",
         "crawler": "Crawler_Linux/Crawler.x86_64",
+        "tennis": "Tennis_Linux/Tennis.x86_64",
 }
 
 
@@ -144,6 +145,11 @@ class UnityEnvAdapter:
 
         # Number of actions
         brain = self._env.brains[self._brain_name]
+
+        state_size = brain.vector_observation_space_size
+        if brain.brain_name == "TennisBrain":
+            state_size = 24  # Bugfix for the TennisBrain
+
         if brain.vector_action_space_type == 'continuous':
             self.action_space = spaces.Box(
                         low=-1.0, high=1.0,
@@ -159,7 +165,7 @@ class UnityEnvAdapter:
                     "observation space.")
             self.observation_space = spaces.Box(
                     low=-100.0, high=100.0,
-                    shape=(brain.vector_observation_space_size,))
+                    shape=(state_size,))
         else:
             self.observation_space = spaces.Discrete(
                     brain.vector_observation_space_size)
@@ -176,6 +182,8 @@ class UnityEnvAdapter:
         rewards = np.asarray(rewards)
         dones = np.asarray(brain_info.local_done)
         self.states = next_states
+
+        assert rewards.shape == (self.n_agents,)
 
         stats.set("steps", self.n_agents)
         stats.set("rewards", sum(rewards))

@@ -110,7 +110,7 @@ class Runner(object):
                              "Steps executed: {} ".format(stats.sum("steps")) +
                              "Episode length: {} ".format(
                                  int(stats.avg("steps"))) +
-                             "Return: {:.2f}      \r".format(
+                             "Return: {:.4f}      \r".format(
                                  stats.avg("rewards")))
             sys.stdout.flush()
         print()

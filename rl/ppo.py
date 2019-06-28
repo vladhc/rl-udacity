@@ -28,6 +28,7 @@ class PPO:
         print("PPO agent:")
 
         self._observation_shape = observation_shape
+        print("\tState shape: {}".format(self._observation_shape))
         self._action_space = action_space
         self._gamma = gamma
         print("\tReward discount (gamma): {}".format(self._gamma))
@@ -76,6 +77,8 @@ class PPO:
         states_tensor = torch.from_numpy(states).float().to(self._device)
         self._net.train(False)
         batch_size = len(states)
+        states_shape = (batch_size,) + self._observation_shape
+        assert states_tensor.shape == states_shape, states_tensor.shape
 
         if self._is_continous:
             action_shape = (batch_size, ) + self._action_space.shape

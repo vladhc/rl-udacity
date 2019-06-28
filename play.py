@@ -22,6 +22,7 @@ def main(checkpoint):
             "reacher": "reacher",
             "crawler": "crawler",
             "banana": "banana",
+            "tennis": "tennis",
             }[file_prefix]
     s = s[1:]
 
