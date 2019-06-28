@@ -1,7 +1,7 @@
 import argparse
 
 from rl import Runner, create_env
-from rl import Reinforce, QLearning, ActorCritic, PPO
+from rl import Reinforce, QLearning, ActorCritic, PPO, MultiPPO
 
 from google.cloud import storage
 
@@ -93,6 +93,16 @@ def main(**args):
                 learning_rate=learning_rate)
     elif agent_type == "ppo":
         agent = PPO(
+                action_space=action_space,
+                observation_shape=observation_shape,
+                n_agents=envs_count,
+                gamma=gamma,
+                horizon=args["horizon"],
+                epochs=args["ppo_epochs"],
+                gae_lambda=args["gae_lambda"],
+                learning_rate=learning_rate)
+    elif agent_type == 'multippo':
+        agent = MultiPPO(
                 action_space=action_space,
                 observation_shape=observation_shape,
                 n_agents=envs_count,
