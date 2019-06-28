@@ -2,6 +2,8 @@
 
 set -eu
 
+mkdir -p environments
+
 if [ ! -f ./environments/Tennis_Linux/Tennis.x86_64 ]; then
   wget https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Linux.zip
   unzip Tennis_Linux.zip
