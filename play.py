@@ -7,7 +7,7 @@ import numpy as np
 from gym import spaces
 
 
-def main(checkpoint):
+def main(checkpoint, debug=False):
     filename = os.path.basename(checkpoint)
     s = filename.split('-')
 
@@ -33,7 +33,7 @@ def main(checkpoint):
 
     try:
         while True:
-            reward = play_episode(env, sample_action)
+            reward = play_episode(env, sample_action, debug=debug)
             rewards.append(reward)
             print("Reward #{}: {}; Average: {}".format(
                 len(rewards), rewards[-1], np.average(rewards)))
@@ -43,15 +43,23 @@ def main(checkpoint):
     env.close()
 
 
-def play_episode(env, sample_action):
+def play_episode(env, sample_action, debug=False):
     env.reset()
     reward_acc = 0.0
 
     while True:
         actions = sample_action(env.states)
         rewards, _, dones, _ = env.step(actions)
+        if debug:
+            print("states:", env.states)
+            print("actions:", actions)
+            print("rewards:", rewards)
+            print("term:", dones)
         env.render()
-        time.sleep(0.02)
+        if debug:
+            input("Press for the next step...")
+        else:
+            time.sleep(0.02)
         reward_acc += np.average(rewards)
         if dones.any():
             break
@@ -112,5 +120,7 @@ def sample_action_fn(checkpoint, action_space):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint")
+    parser.add_argument("--debug", action="store_true")
+    parser.set_defaults(debug=False)
     args = parser.parse_args()
-    main(args.checkpoint)
+    main(args.checkpoint, debug=args.debug)
