@@ -200,8 +200,7 @@ class UnityEnvAdapter:
         # Experiment for the TennisBrain
         if self._name == "tennis":
             rewards[rewards > 0] = 10.0
-            rewards[rewards < 0] = -10.0
-            dones[rewards >= 0] = False
+            rewards[rewards < 0] = -100.0
 
         stats.set("env_time", time.time() - t0)
         return rewards, next_states, dones, stats

@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from rl import PPO
 from rl import Statistics
 
@@ -36,8 +37,13 @@ class MultiPPO:
         self._observation_space = observation_shape
 
     def save_model(self, filename):
+        multi_model = {}
         for idx, agent in enumerate(self._agents):
-            agent.save_model(filename + "-agent-{}".format(idx))
+            agent_filename = filename + "-agent-{}".format(idx)
+            agent.save_model(agent_filename)
+            agent_model = torch.load(agent_filename)
+            multi_model["agent-{}".format(idx)] = agent_model
+        torch.save(multi_model, filename)
 
     def step(self, states):
         actions = []
@@ -55,7 +61,6 @@ class MultiPPO:
     def episodes_end(self):
         for agent in self._agents:
             agent.episodes_end()
-
 
     def transitions(self, states, actions, rewards, next_states, term):
         assert len(states) == len(self._agents)

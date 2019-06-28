@@ -1,5 +1,6 @@
 import argparse
 import torch
+import torch.nn as nn
 import time
 import os
 from rl import create_env, GreedyPolicy
@@ -68,7 +69,9 @@ def play_episode(env, sample_action, debug=False):
 
 def sample_action_fn(checkpoint, action_space):
     net = torch.load(checkpoint, map_location="cpu")
-    net.train(False)
+
+    if isinstance(net, nn.Module):
+        net.train(False)
 
     is_continous = isinstance(action_space, spaces.Box)
 
@@ -79,7 +82,7 @@ def sample_action_fn(checkpoint, action_space):
         q_values = net(states_tensor)
         return policy.get_action(q_values.detach().cpu().numpy())
 
-    def _ppo(states):
+    def _ppo(states, net):
         states_tensor = torch.from_numpy(states).float()
         if is_continous:
             batch_size = len(states)
@@ -108,11 +111,28 @@ def sample_action_fn(checkpoint, action_space):
                 assert actions.shape == (batch_size,), actions.shape
         return actions.detach().cpu().numpy()
 
+    def _multippo(states):
+        actions = []
+        for idx in range(len(states)):
+            key = "agent-".format(idx)
+            agent = net[key]
+            agent.train(False)
+            agent_states = np.expand_dims(states[idx], axis=0)
+            action = _ppo(state=agent_states, net=agent)[0]
+            actions.append(action)
+        actions = np.asarray(actions)
+        batch_size = len(states)
+        actions_shape = (batch_size,) + action_space.shape
+        assert actions.shape == actions_shape, actions.shape
+        return actions
+
     # Derive agent from the checkpoint filename
     filename = os.path.basename(checkpoint)
     for s in filename.split('-'):
         if s == "ppo":
-            return _ppo
+            return lambda states: _ppo(states, net)
+        elif s == "multippo":
+            return _multippo
 
     return _qlearning
 
