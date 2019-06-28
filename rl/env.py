@@ -115,7 +115,7 @@ def createUnityEnv(env_id, render=False):
 
     file_name = "environments/{}".format(file_name)
     env = UnityEnvironment(file_name=file_name)
-    return UnityEnvAdapter(env)
+    return UnityEnvAdapter(env, env_id)
 
 
 def createGymEnv(env_id):
@@ -131,8 +131,9 @@ def createGymEnv(env_id):
 
 class UnityEnvAdapter:
 
-    def __init__(self, unity_env):
+    def __init__(self, unity_env, name):
         self._env = unity_env
+        self._name = name
         self._brain_name = self._env.brain_names[0]
         print("Unity Environment Adapter:")
         print("\tUsing brain {}".format(self._brain_name))
@@ -143,11 +144,12 @@ class UnityEnvAdapter:
         print("\tNumber of agents: {}".format(len(brain_info.agents)))
         self.n_agents = len(brain_info.agents)
 
+
         # Number of actions
         brain = self._env.brains[self._brain_name]
 
         state_size = brain.vector_observation_space_size
-        if brain.brain_name == "TennisBrain":
+        if self._name == "tennis":
             state_size = 24  # Bugfix for the TennisBrain
 
         if brain.vector_action_space_type == 'continuous':
@@ -185,16 +187,22 @@ class UnityEnvAdapter:
 
         assert rewards.shape == (self.n_agents,)
 
-        stats.set("steps", self.n_agents)
-        stats.set("rewards", sum(rewards))
-        stats.set("env_time", time.time() - t0)
-        if dones.any():
-            stats.set("episodes", sum(dones))
+        for idx in range(len(self.states)):
+            env_stat = self._env_stats[idx]
+            env_stat.set("steps", 1)
+            env_stat.set("rewards", rewards[idx])
+            if dones[idx]:
+                stats.set("steps", env_stat.sum("steps"))
+                stats.set("rewards", env_stat.sum("rewards"))
+                stats.set("episodes", 1)
+                self._env_stats[idx] = Statistics()
 
+        stats.set("env_time", time.time() - t0)
         return rewards, next_states, dones, stats
 
     def reset(self):
         """ return state """
+        self._env_stats = [Statistics() for _ in range(self.n_agents)]
         env_info = self._env.reset(train_mode=False)[self._brain_name]
         states = env_info.vector_observations
         self.states = states
