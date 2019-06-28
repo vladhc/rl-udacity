@@ -18,7 +18,8 @@ class MultiPPO:
             learning_rate=0.0001):
 
         print("MultiPPO agent:")
-        self._agents = [PPO(
+        self._agents = [
+            PPO(
                 action_space,
                 observation_shape,
                 n_agents=1,
@@ -32,6 +33,7 @@ class MultiPPO:
             for _ in range(n_agents)
         ]
         self._action_space = action_space
+        self._observation_space = observation_shape
 
     def save_model(self, filename):
         for idx, agent in enumerate(self._agents):
@@ -40,7 +42,9 @@ class MultiPPO:
     def step(self, states):
         actions = []
         for state, agent in zip(states, self._agents):
-            action = agent.step(np.expand_dims(state, axis=0))[0]
+            state = np.expand_dims(state, axis=0)
+            assert state.shape == (1,) + self._observation_space, state.shape
+            action = agent.step(state)[0]
             actions.append(action)
         actions = np.asarray(actions)
         batch_size = len(states)
