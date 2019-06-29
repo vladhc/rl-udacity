@@ -1,6 +1,6 @@
 import argparse
 
-from rl import Runner, create_env
+from rl import Runner, TrajectoryBuffer, create_env
 from rl import Reinforce, QLearning, ActorCritic, PPO, MultiPPO
 
 from google.cloud import storage
@@ -112,11 +112,19 @@ def main(**args):
                 gae_lambda=args["gae_lambda"],
                 learning_rate=learning_rate)
 
+    traj_buffer = None
+    if args["save_traj"]:
+        traj_buffer = TrajectoryBuffer(
+                observation_shape=observation_shape,
+                action_space=action_space)
+        print("Saving trajectories is enabled")
+
     runner = Runner(
             env,
             agent,
             sess,
             bucket=bucket,
+            traj_buffer=traj_buffer,
             num_iterations=iterations,
             training_steps=training_steps,
             evaluation_steps=evaluation_steps)
@@ -177,6 +185,9 @@ if __name__ == '__main__':
         help="PPO parameter. Epochs count in the optimization phase.")
     parser.add_argument("--gae_lambda", type=float, default=0.95,
         help="lambda parameter for Advantage Function Estimation (GAE)")
+    parser.add_argument("--save_traj", action="store_true",
+            help="Enables persisting trajectories on disk during " +
+            "training/execution time.")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
@@ -185,6 +196,7 @@ if __name__ == '__main__':
     parser.set_defaults(soft=False)
     parser.set_defaults(baseline=False)
     parser.set_defaults(gcp=False)
+    parser.set_defaults(save_traj=False)
     args = parser.parse_args()
 
     d = vars(args)

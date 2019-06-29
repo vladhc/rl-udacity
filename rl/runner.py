@@ -16,6 +16,7 @@ class Runner(object):
             num_iterations,
             training_steps,
             evaluation_steps,
+            traj_buffer,
             bucket):
 
         self._env = env
@@ -25,6 +26,7 @@ class Runner(object):
         self._iteration = 0
         self._training_steps = training_steps
         self._evaluation_steps = evaluation_steps
+        self._traj_buffer = traj_buffer
 
         print("Session ID: {}".format(self._session_id))
         print("Iterations: {}".format(self._num_iterations))
@@ -48,6 +50,8 @@ class Runner(object):
             self._checkpoint()
 
     def _checkpoint(self):
+
+        # Save Agent's Model
         filename = '{}-{}.pth'.format(self._session_id, self._iteration)
         path = './checkpoints/{}'.format(filename)
         self._agent.save_model(path)
@@ -55,6 +59,15 @@ class Runner(object):
             blob = self._bucket.blob(
                     'checkpoints/{}'.format(filename))
             blob.upload_from_filename(filename=path)
+
+        # Save Trajectories
+        if self._traj_buffer is not None:
+            self._traj_buffer.save("./trajectories/{}".format(filename))
+            self._traj_buffer.reset()
+            if self._bucket:
+                blob = self._bucket.blob(
+                        "trajectories/{}".format(filename))
+                blob.upload_from_filename(filename=path)
 
     def _run_one_iteration(self):
         stats = Statistics(self._summary_writer, self._iteration)
@@ -91,6 +104,10 @@ class Runner(object):
             rewards, next_states, dones, env_stats = \
                 self._env.step(actions)
             stats.set_all(env_stats)
+
+            if self._traj_buffer is not None:
+                self._traj_buffer.push(
+                        states, actions, rewards, next_states, dones)
 
             if is_training:
                 t0 = time.time()

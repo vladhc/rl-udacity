@@ -3,5 +3,6 @@ train/
 train_bananas/
 checkpoints/
 environments/
+trajectories/
 unity-environment.log
 .ipynb_checkpoints/
