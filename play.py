@@ -52,10 +52,10 @@ def play_episode(env, sample_action, debug=False):
         actions = sample_action(env.states)
         rewards, _, dones, _ = env.step(actions)
         if debug:
-            print("states:", env.states)
             print("actions:", actions)
             print("rewards:", rewards)
-            print("term:", dones)
+            if dones.any():
+                print("term:", dones)
         env.render()
         if debug:
             input("Press for the next step...")
@@ -114,11 +114,11 @@ def sample_action_fn(checkpoint, action_space):
     def _multippo(states):
         actions = []
         for idx in range(len(states)):
-            key = "agent-".format(idx)
+            key = "agent-{}".format(idx)
             agent = net[key]
             agent.train(False)
             agent_states = np.expand_dims(states[idx], axis=0)
-            action = _ppo(state=agent_states, net=agent)[0]
+            action = _ppo(states=agent_states, net=agent)[0]
             actions.append(action)
         actions = np.asarray(actions)
         batch_size = len(states)
