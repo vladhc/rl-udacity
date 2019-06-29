@@ -3,6 +3,7 @@
 set -eu
 
 mkdir -p checkpoints
+mkdir -p trajectories
 mkdir -p train
 
 python train.py --agent "ppo" \
