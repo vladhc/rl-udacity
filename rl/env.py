@@ -2,6 +2,7 @@ import time
 import math
 import numpy as np
 from collections import namedtuple
+from multiprocessing import Process, Queue, set_start_method
 
 import gym
 from gym import spaces
@@ -12,12 +13,19 @@ from rl import Statistics
 # Common code for both Unity and OpenAI environments
 
 def create_env(env_id, count=1):
+    set_start_method('spawn')
     assert count > 0
 
     if env_id in unity_envs:
-        config = unity_envs[env_id]
         render = count == 1
-        create_env_fn = lambda: UnityEnvAdapter(config, render=render)
+        fork = count > 1
+        if fork:
+            create_env_fn = lambda: ForkedUnityEnv(env_id, render=render)
+        else:
+            create_env_fn = lambda: _run_unity_env(
+                    env_id,
+                    render=render,
+                    worker_id=0)
     else:
         create_env_fn = lambda: OpenAIAdapter(env_id)
 
@@ -211,9 +219,82 @@ unity_env_list = {
 unity_envs = {env.id: env for env in unity_env_list}
 
 
+class ForkedUnityEnv:
+
+    last_unity_worker_id = 0
+
+    def __init__(self, env_id, render=False):
+        self._config = unity_envs[env_id]
+        self._action_queue = Queue()
+        self._traj_queue = Queue()
+
+        p = Process(
+                target=_run_forked_unity_env,
+                args=(
+                    env_id,
+                    self._action_queue,
+                    self._traj_queue,
+                    render,
+                    ForkedUnityEnv.last_unity_worker_id))
+        p.start()
+        ForkedUnityEnv.last_unity_worker_id += 1
+
+        env_info = self._traj_queue.get()
+        self.observation_space = env_info["observation_space"]
+        self.action_space = env_info["action_space"]
+        self.n_agents = env_info["n_agents"]
+        self.n_envs = env_info["n_envs"]
+
+    def step(self, actions):
+        self._action_queue.put_nowait(actions)
+        return self._traj_queue.get
+
+    def reset(self):
+        self._action_queue.put_nowait("RESET")
+        return self._traj_queue.get
+
+    def render(self):
+        self._action_queue.put_nowait("RENDER")
+
+    def close(self):
+        self._action_queue.put("CLOSE")
+
+
+def _run_forked_unity_env(env_id, action_queue, traj_queue, render, worker_id):
+    env = _run_unity_env(env_id, worker_id=worker_id, render=render)
+
+    traj_queue.put_nowait({
+        "observation_space": env.observation_space,
+        "action_space": env.action_space,
+        "n_agents": env.n_agents,
+        "n_envs": env.n_envs,
+    })
+
+    while True:
+        action = action_queue.get()
+        if action == "RESET":
+            state_promise = env.reset()
+            state = state_promise()
+            traj_queue.put_nowait(state)
+        elif action == "CLOSE":
+            env.close()
+            return
+        elif action == "RENDER":
+            env.render()
+        else:
+            step_promise = env.step(action)
+            step = step_promise()
+            traj_queue.put_nowait(step)
+
+
+def _run_unity_env(env_id, worker_id, render=False):
+    config = unity_envs[env_id]
+    return UnityEnvAdapter(config, render=render, worker_id=worker_id)
+
+
 class UnityEnvAdapter:
 
-    def __init__(self, config, render):
+    def __init__(self, config, render, worker_id):
         self._config = config
 
         file_name = config.path
@@ -221,7 +302,7 @@ class UnityEnvAdapter:
             file_name = config.path_novis
         file_name = "environments/{}".format(file_name)
 
-        self._env = UnityEnvironment(file_name=file_name)
+        self._env = UnityEnvironment(file_name=file_name, worker_id=worker_id)
         self._brain_name = self._env.brain_names[0]
         print("Unity Environment Adapter:")
         print("\tUsing brain {}".format(self._brain_name))

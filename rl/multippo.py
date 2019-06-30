@@ -34,8 +34,9 @@ class MultiPPO:
             )
             for _ in range(n_agents)
         ]
+        self._n_envs = n_envs
         self._action_space = action_space
-        self._observation_space = observation_shape
+        self._observation_shape = observation_shape
 
     def save_model(self, filename):
         multi_model = {}
@@ -47,14 +48,21 @@ class MultiPPO:
         torch.save(multi_model, filename)
 
     def step(self, states):
-        actions = []
-        for state, agent in zip(states, self._agents):
-            state = np.expand_dims(state, axis=0)
-            assert state.shape == (1,) + self._observation_space, state.shape
-            action = agent.step(state)[0]
-            actions.append(action)
-        actions = np.asarray(actions)
         batch_size = len(states)
+        assert batch_size == self._n_agents * self._n_envs, batch_size
+
+        actions = []
+        agent_batch_size = batch_size / self._n_agents
+        for agent_idx in range(self._n_agents):
+            agent_states = states[agent_idx::self._n_agents]
+            states_shape = (agent_batch_size,) + self._observation_shape
+            assert agent_states.shape == states_shape, agent_states.shape
+
+            agent = self._agents[agent_idx]
+            agent_actions = agent.step(agent_states)
+            actions.append(agent_actions)
+
+        actions = np.concatenate(actions, axis=0)
         actions_shape = (batch_size,) + self._action_space.shape
         assert actions.shape == actions_shape, actions.shape
         return actions
@@ -64,15 +72,20 @@ class MultiPPO:
             agent.episodes_end()
 
     def transitions(self, states, actions, rewards, next_states, term):
-        assert len(states) == len(self._agents)
+        batch_size = self._n_agents * self._n_envs
+        states_shape = (batch_size,) + self._observation_shape
+        actions_shape = (batch_size,) + self._action_space.shape
+        assert states.shape == states_shape, states.shape
+        assert actions.shape == actions_shape, actions.shape
         stats = Statistics()
+        n_agents = self._n_agents
         for idx, agent in enumerate(self._agents):
             s = agent.transitions(
-                np.expand_dims(states[idx], axis=0),
-                np.expand_dims(actions[idx], axis=0),
-                np.expand_dims(rewards[idx], axis=0),
-                np.expand_dims(next_states[idx], axis=0),
-                np.expand_dims(term[idx], axis=0),
+                    states[idx::n_agents],
+                    actions[idx::n_agents],
+                    rewards[idx::n_agents],
+                    next_states[idx::n_agents],
+                    term[idx::n_agents],
             )
             stats.set_all(s)
         return stats
@@ -86,3 +99,8 @@ class MultiPPO:
         self._eval = v
         for agent in self._agents:
             agent.eval = v
+
+    @property
+    def _n_agents(self):
+        return len(self._agents)
+
