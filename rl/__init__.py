@@ -12,3 +12,4 @@ from .multippo import MultiPPO
 from .trajectory import Trajectory, TrajectoryBuffer
 from .runner import Runner
 from .env import create_env
+from .imagination import train_env_model

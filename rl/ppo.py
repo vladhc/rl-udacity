@@ -11,6 +11,9 @@ from rl import Statistics
 from gym import spaces
 
 
+simulated_samples = 256
+
+
 class PPO:
 
     def __init__(
@@ -23,6 +26,7 @@ class PPO:
             gae_lambda=0.95,
             epochs=12,
             epsilon=0.2,
+            simulate_env_net=None,
             learning_rate=0.0001):
 
         print("PPO agent:")
@@ -51,6 +55,13 @@ class PPO:
         print("\tHorizon: {}".format(self._horizon))
         self._epochs = epochs
         print("\tEpochs: {}".format(self._epochs))
+
+        self._simulate_env_net = simulate_env_net
+        if self._simulate_env_net is not None:
+            print("\tUsing simulation enviroment for generating " +
+                    "additional {} samples per step".format(simulated_samples))
+            n_agents += simulated_samples
+
         self._buffer = TrajectoryBuffer(
                 capacity=self._horizon * n_agents,
                 traj_constructor=lambda: Trajectory(
@@ -117,6 +128,7 @@ class PPO:
     def transitions(self, states, actions, rewards, next_states, term):
         assert not self.eval
 
+        env_idx = 0
         for idx in range(len(states)):
             self._buffer.push(
                     states[idx],
@@ -124,7 +136,41 @@ class PPO:
                     rewards[idx],
                     next_states[idx],
                     term[idx],
-                    idx)
+                    env_idx)
+            env_idx += 1
+
+        # Generate additional experience samples from simulated environment
+        if self._simulate_env_net is not None:
+            idx = np.random.choice(len(states), simulated_samples)
+            states = states[idx]
+            assert len(states) == simulated_samples
+            actions = self.step(states)
+            states = torch.tensor(states).float().to(self._device)
+            actions = torch.from_numpy(actions).to(self._device)
+            outputs = self._simulate_env_net({
+                "state": states,
+                "action": actions,
+            })
+
+            states = states.detach().cpu().numpy()
+            actions = actions.detach().cpu().numpy()
+            next_states = outputs["state"].detach().cpu().numpy()
+            rewards = outputs["reward"].detach().cpu().numpy()
+            term = outputs["done"].detach().cpu().numpy()
+
+            next_states = np.transpose(next_states, (0, 2, 1))
+
+            for idx in range(len(states)):
+                done = term[idx] > 0.5
+                self._buffer.push(
+                        states[idx],
+                        actions[idx],
+                        rewards[idx][0],
+                        next_states[idx][0],
+                        done,
+                        env_idx)
+                env_idx += 1
+
         return self._optimize()
 
     def _v(self, states):
@@ -380,7 +426,7 @@ class Trajectory:
 
         self._states[idx] = state
         self._states[idx+1] = next_state
-        assert action.shape == self.actions[idx].shape
+        assert action.shape == self.actions[idx].shape, action.shape
         self.actions[idx] = action
         self.rewards[idx] = reward
 

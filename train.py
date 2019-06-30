@@ -2,6 +2,7 @@ import argparse
 
 from rl import Runner, TrajectoryBuffer, create_env
 from rl import Reinforce, QLearning, ActorCritic, PPO, MultiPPO
+from rl import train_env_model
 
 from google.cloud import storage
 
@@ -48,6 +49,14 @@ def main(**args):
                 blob.download_to_file(f)
         print("Loading ref_net from {}".format(ref_net))
         ref_net = torch.load(ref_net, map_location='cpu')
+
+    simulate_env_net = None
+    if args["simulation_env"]:
+        simulate_env_net = train_env_model(
+                sess,
+                action_size=action_space.shape[0],
+                state_size=observation_shape[0],
+                epochs=100)
 
     agent_type = args["agent"]
     baseline = args["baseline"]
@@ -97,6 +106,7 @@ def main(**args):
                 observation_shape=observation_shape,
                 n_agents=envs_count,
                 gamma=gamma,
+                simulate_env_net=simulate_env_net,
                 horizon=args["horizon"],
                 epochs=args["ppo_epochs"],
                 gae_lambda=args["gae_lambda"],
@@ -188,6 +198,7 @@ if __name__ == '__main__':
     parser.add_argument("--save_traj", action="store_true",
             help="Enables persisting trajectories on disk during " +
             "training/execution time.")
+    parser.add_argument("--simulation_env", action="store_true")
 
     parser.set_defaults(dueling=False)
     parser.set_defaults(double=False)
@@ -197,6 +208,7 @@ if __name__ == '__main__':
     parser.set_defaults(baseline=False)
     parser.set_defaults(gcp=False)
     parser.set_defaults(save_traj=False)
+    parser.set_defaults(simulation_env=False)
     args = parser.parse_args()
 
     d = vars(args)
