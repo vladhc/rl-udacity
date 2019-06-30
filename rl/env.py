@@ -21,10 +21,7 @@ def create_env(env_id, count=1):
     else:
         create_env_fn = lambda: OpenAIAdapter(env_id)
 
-    if count == 1:
-        env = create_env_fn()
-    else:
-        env = MultiEnv(create_env_fn, count=count)
+    env = MultiEnv(create_env_fn, count=count)
 
     print("Created {} environment. Instances: {}".format(env_id, count))
     return env
@@ -55,29 +52,44 @@ class MultiEnv(object):
         if isinstance(actions, np.ndarray):
             actions = actions.tolist()
 
-        for action, env in zip(actions, self._envs):
-            next_state, reward, done, _ = env.step(action)
+        step_promises = []
+        for env_idx, env in enumerate(self._envs):
+            count = env.n_envs * env.n_agents
+            start = env_idx * count
+            end = start + count
+            env_actions = actions[start:end]
+            step_promises.append(env.step(env_actions))
 
-            state = next_state
+        reset_states = []
+        for env_idx, step_promise in enumerate(step_promises):
+            env_next_states, env_rewards, env_dones = step_promise()
+
+            env = self._envs[env_idx]
+            env_states = env_next_states
             env_stat = self._env_stats[env]
             env_stat.set("steps", 1)
-            env_stat.set("rewards", reward)
-            if done:
+            env_stat.set("rewards", sum(env_rewards))
+            if env_dones.any():
                 stats.set("steps", env_stat.sum("steps"))
-                stats.set("rewards", env_stat.sum("rewards"))
+                avg_reward = env_stat.sum("rewards") / (
+                        env.n_envs * env.n_agents)
+                stats.set("rewards", avg_reward)
                 stats.set("episodes", 1)
                 self._env_stats[env] = Statistics()
-                state = env.reset()
+                reset_states.append((env_idx, env.reset()))
 
-            next_states.append(next_state)
-            states.append(state)
-            rewards.append(reward)
-            dones.append(done)
+            next_states.append(env_next_states)
+            states.append(env_states)
+            rewards.append(env_rewards)
+            dones.append(env_dones)
 
-        rewards = np.asarray(rewards)
-        dones = np.asarray(dones)
-        next_states = np.asarray(next_states)
-        self.states = np.asarray(states)
+        for env_idx, step_promise in reset_states:
+            states[env_idx] = step_promise()
+
+        rewards = np.concatenate(rewards, axis=0)
+        dones = np.concatenate(dones, axis=0)
+        next_states = np.concatenate(next_states, axis=0)
+        self.states = np.concatenate(states, axis=0)
 
         stats.set("env_time", time.time() - t0)
 
@@ -85,8 +97,9 @@ class MultiEnv(object):
 
     def reset(self):
         self._env_stats = {env: Statistics() for env in self._envs}
-        states = [env.reset() for env in self._envs]
-        self.states = np.asarray(states)
+        step_promises = [env.reset() for env in self._envs]
+        states = [step_promise() for step_promise in step_promises]
+        self.states = np.concatenate(states, axis=0)
 
     def render(self):
         if len(self._envs) == 1:
@@ -116,11 +129,18 @@ class OpenAIAdapter:
         self.action_space = env.action_space
         self.observation_space = env.observation_space
 
-    def step(self, action):
-        return self._env.step(action)
+    def step(self, actions):
+        assert len(actions) == 1
+        state, reward, done, _ = self._env.step(actions[0])
+        states = np.expand_dims(state, axis=0)
+        rewards = np.expand_dims(reward, axis=0)
+        dones = np.expand_dims(done, axis=0)
+        return lambda: (states, rewards, dones)
 
     def reset(self):
-        return self._env.reset()
+        state = self._env.reset()
+        states = np.expand_dims(state, axis=0)
+        return lambda: states
 
     def close(self):
         self._env.close()
@@ -236,37 +256,20 @@ class UnityEnvAdapter:
 
     def step(self, actions):
         """ return next_state, action, reward, None """
-        stats = Statistics()
-        t0 = time.time()
-
         brain_info = self._env.step(actions)[self._brain_name]
         next_states = brain_info.vector_observations
         rewards = brain_info.rewards
         rewards = np.asarray(rewards)
         dones = np.asarray(brain_info.local_done)
-        self.states = next_states
 
         assert rewards.shape == (self._batch_size,)
 
-        for idx in range(self._batch_size):
-            env_stat = self._env_stats[idx]
-            env_stat.set("steps", 1)
-            env_stat.set("rewards", rewards[idx])
-            if dones[idx]:
-                stats.set("steps", env_stat.sum("steps"))
-                stats.set("rewards", env_stat.sum("rewards"))
-                stats.set("episodes", 1)
-                self._env_stats[idx] = Statistics()
-
-        stats.set("env_time", time.time() - t0)
-        return rewards, next_states, dones, stats
+        return lambda: (next_states, rewards, dones)
 
     def reset(self):
         """ return state """
-        self._env_stats = [Statistics() for _ in range(self._batch_size)]
         env_info = self._env.reset(train_mode=False)[self._brain_name]
-        states = env_info.vector_observations
-        self.states = states
+        return lambda: env_info.vector_observations
 
     def render(self):
         return
