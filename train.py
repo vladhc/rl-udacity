@@ -30,6 +30,8 @@ def main(**args):
 
     action_space = env.action_space
     observation_shape = env.observation_space.shape
+    print("Action space: {}".format(action_space))
+    print("Observation space: {}".format(env.observation_space))
 
     bucket = None
     if gcp:
@@ -95,7 +97,7 @@ def main(**args):
         agent = PPO(
                 action_space=action_space,
                 observation_shape=observation_shape,
-                n_agents=envs_count,
+                n_envs=env.n_envs,
                 gamma=gamma,
                 horizon=args["horizon"],
                 epochs=args["ppo_epochs"],
@@ -105,7 +107,8 @@ def main(**args):
         agent = MultiPPO(
                 action_space=action_space,
                 observation_shape=observation_shape,
-                n_agents=envs_count,
+                n_envs=env.n_envs,
+                n_agents=env.n_agents,
                 gamma=gamma,
                 horizon=args["horizon"],
                 epochs=args["ppo_epochs"],

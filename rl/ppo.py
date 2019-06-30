@@ -17,7 +17,7 @@ class PPO:
             self,
             action_space,
             observation_shape,
-            n_agents,
+            n_envs,
             gamma=0.99,
             horizon=128,
             gae_lambda=0.95,
@@ -52,7 +52,7 @@ class PPO:
         self._epochs = epochs
         print("\tEpochs: {}".format(self._epochs))
         self._buffer = TrajectoryBuffer(
-                capacity=self._horizon * n_agents,
+                capacity=self._horizon * n_envs,
                 traj_constructor=lambda: Trajectory(
                     horizon,
                     observation_shape,

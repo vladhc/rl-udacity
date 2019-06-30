@@ -10,6 +10,7 @@ class MultiPPO:
             self,
             action_space,
             observation_shape,
+            n_envs,
             n_agents,
             gamma=0.99,
             horizon=128,
@@ -23,7 +24,7 @@ class MultiPPO:
             PPO(
                 action_space,
                 observation_shape,
-                n_agents=1,
+                n_envs=n_envs,
                 gamma=gamma,
                 horizon=horizon,
                 gae_lambda=gae_lambda,
