@@ -11,3 +11,4 @@ from .ppo import PPO
 from .multippo import MultiPPO
 from .runner import Runner
 from .env import create_env
+from .agent import create_agent

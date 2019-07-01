@@ -1,119 +1,37 @@
 import argparse
-
-from rl import Runner, create_env
-from rl import Reinforce, QLearning, ActorCritic, PPO, MultiPPO
-
 from google.cloud import storage
 
-import torch
+from rl import Runner, create_env, create_agent
+
 
 BUCKET = 'rl-1'
 
 
 def main(**args):
-    envs_count = args['env_count']
-    env = create_env(args['env'], envs_count)
+    envs_count = args["env_count"]
+    env = create_env(args["env"], envs_count)
+    del args["env"]
 
-    iterations = args['iterations']
-    training_steps = args['steps']
-    evaluation_steps = args['eval_steps']
-    gcp = args['gcp']
+    agent = create_agent(env, args)
 
-    sess = args['sess']
-    sess += '-' + args['agent']
+    sess = args["sess"]
+    sess += "-" + args["agent"]
     sess_options = [
-            'double', 'priority', 'dueling',
-            'noisy', 'soft', 'baseline']
+            "double", "priority", "dueling",
+            "noisy", "soft", "baseline"]
     for opt in sess_options:
         if args[opt]:
-            sess += '-' + opt
-
-    action_space = env.action_space
-    observation_shape = env.observation_space.shape
-    print("Action space: {}".format(action_space))
-    print("Observation space: {}".format(env.observation_space))
+            sess += "-" + opt
 
     bucket = None
+    gcp = args["gcp"]
     if gcp:
         client = storage.Client()
         bucket = client.get_bucket(BUCKET)
 
-    ref_net = args['ref_net']
-    if ref_net is not None:
-        if not ref_net.endswith(".pth"):
-            ref_net += ".pth"
-        ref_net = "checkpoints/{}".format(ref_net)
-
-        if gcp:
-            blob = storage.Blob(ref_net, bucket)
-            with open(ref_net, "wb") as f:
-                blob.download_to_file(f)
-        print("Loading ref_net from {}".format(ref_net))
-        ref_net = torch.load(ref_net, map_location='cpu')
-
-    agent_type = args["agent"]
-    baseline = args["baseline"]
-    baseline_learning_rate = args["baseline_learning_rate"]
-    gamma = args["gamma"]
-    learning_rate = args["learning_rate"]
-
-    if agent_type == "qlearning":
-        agent = QLearning(
-                action_size=action_space.n,
-                observation_shape=observation_shape,
-                beta_decay=(iterations * training_steps),
-                ref_net=ref_net,
-                gamma=gamma,
-                learning_rate=learning_rate,
-                soft=args["soft"],
-                dueling=args["dueling"],
-                double=args["double"],
-                noisy=args["noisy"],
-                priority=args["priority"],
-                replay_buffer_size=args["replay_buffer_size"],
-                min_replay_buffer_size=args["min_replay_buffer_size"],
-                target_update_freq=args["target_update_freq"],
-                train_freq=args["train_freq"],
-                tau=args["tau"],
-                batch_size=args["batch_size"],
-                epsilon_start=args["epsilon_start"],
-                epsilon_end=args["epsilon_end"],
-                epsilon_decay=args["epsilon_decay"])
-    elif agent_type == "reinforce":
-        agent = Reinforce(
-                action_size=action_space.n,
-                observation_shape=observation_shape,
-                gamma=gamma,
-                learning_rate=learning_rate,
-                baseline=baseline,
-                baseline_learning_rate=baseline_learning_rate)
-    elif agent_type == "actor-critic":
-        agent = ActorCritic(
-                action_size=action_space.n,
-                observation_shape=observation_shape,
-                gamma=gamma,
-                learning_rate=learning_rate)
-    elif agent_type == "ppo":
-        agent = PPO(
-                action_space=action_space,
-                observation_shape=observation_shape,
-                n_envs=env.n_envs,
-                gamma=gamma,
-                horizon=args["horizon"],
-                epochs=args["ppo_epochs"],
-                gae_lambda=args["gae_lambda"],
-                learning_rate=learning_rate)
-    elif agent_type == 'multippo':
-        agent = MultiPPO(
-                action_space=action_space,
-                observation_shape=observation_shape,
-                n_envs=env.n_envs,
-                n_agents=env.n_agents,
-                gamma=gamma,
-                horizon=args["horizon"],
-                epochs=args["ppo_epochs"],
-                gae_lambda=args["gae_lambda"],
-                learning_rate=learning_rate)
+    evaluation_steps = args['eval_steps']
+    training_steps = args['steps']
+    iterations = args['iterations']
 
     runner = Runner(
             env,
@@ -144,6 +62,9 @@ if __name__ == '__main__':
     parser.add_argument("--baseline", action="store_true",
             help="Enables baseline for the REINFORCE agent.")
     parser.add_argument("--epsilon_decay", type=int, default=3000)
+    parser.add_argument("--beta_decay", type=int, default=3000,
+            help="How many steps should beta parameter decay. " +
+            "Used in the Q-Learning")
     parser.add_argument("--steps", type=int, default=100,
             help="Number of steps for training phase in one iteration")
     parser.add_argument("--eval_steps", type=int, default=100,
@@ -168,11 +89,6 @@ if __name__ == '__main__':
     parser.add_argument("--tau", type=float, default=0.001,
             help="Soft update parameter")
     parser.add_argument("--train_freq", type=int, default=1)
-    parser.add_argument("--ref_net", type=str,
-        help="Used for debugging of Q values overestimation. " +
-        "This checkpoint should point to an already trained network. " +
-        "The network is used for extimation of V_next* " +
-        "(true next state values).")
     parser.add_argument("--horizon", type=int, default=128,
         help="PPO parameter. How many timesteps collect experience " +
         "before starting optimization phase.")
