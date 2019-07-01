@@ -38,14 +38,11 @@ class PPO:
         self._device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
 
-        self._net = Net(observation_shape, action_space)
-        self._net.to(self._device)
-
         # Optimizer and loss
-        self._optimizer = optim.Adam(
-                self._net.parameters(),
-                lr=learning_rate)
+        self._learning_rate = learning_rate
         print("\tLearning rate: {}".format(learning_rate))
+
+        self.net = Net(observation_shape, action_space)
 
         self._horizon = horizon
         print("\tHorizon: {}".format(self._horizon))
@@ -72,15 +69,27 @@ class PPO:
 
     def save(self):
         return {
-            "net": self._net,
+            "net": self.net,
         }
 
     def load(self, props):
-        self._net = props["net"]
+        self.net = props["net"]
+
+    @property
+    def net(self):
+        return self._net
+
+    @net.setter
+    def net(self, net):
+        self._net = net
+        self._net.to(self._device)
+        self._optimizer = optim.Adam(
+                self._net.parameters(),
+                lr=self._learning_rate)
 
     def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)
-        self._net.train(False)
+        self.net.train(False)
         batch_size = len(states)
         states_shape = (batch_size,) + self._observation_shape
         assert states_tensor.shape == states_shape, states_tensor.shape
@@ -88,7 +97,7 @@ class PPO:
         if self._is_continous:
             action_shape = (batch_size, ) + self._action_space.shape
             with torch.no_grad():
-                actions_mu, actions_var, _ = self._net(states_tensor)
+                actions_mu, actions_var, _ = self.net(states_tensor)
                 assert actions_mu.shape == action_shape, actions_mu
                 assert actions_var.shape == action_shape, actions_var
                 actions_arr = []
@@ -107,7 +116,7 @@ class PPO:
                 assert actions.shape == action_shape, actions.shape
         else:
             with torch.no_grad():
-                action_logits, _, _ = self._net(states_tensor)
+                action_logits, _, _ = self.net(states_tensor)
                 dist = torch.distributions.categorical.Categorical(
                         logits=action_logits)
                 actions = dist.sample()
@@ -137,7 +146,7 @@ class PPO:
         states_tensor = torch.tensor(states).float().to(self._device)
         assert states_tensor.shape == (len(states),) + self._observation_shape
         with torch.no_grad():
-            _, _, v = self._net(states_tensor)
+            _, _, v = self.net(states_tensor)
             v = v.cpu().numpy()
         assert v.shape == (len(states), 1)
         v = np.squeeze(v, axis=1)
@@ -151,7 +160,7 @@ class PPO:
         if not self._buffer.ready():
             return stats
 
-        self._net.train(True)
+        self.net.train(True)
 
         # Create tensors: state, action, next_state, term
         states, actions, target_v, advantage = self._buffer.sample()
@@ -192,7 +201,7 @@ class PPO:
 
             # Calculate Actor Loss
             if self._is_continous:
-                actions_mu, actions_var, v = self._net(states)
+                actions_mu, actions_var, v = self.net(states)
                 assert actions_var.shape == actions_shape, actions_var.shape
                 assert actions_mu.shape == actions_shape, actions_mu.shape
                 assert len(self._action_space.shape) == 1
@@ -209,7 +218,7 @@ class PPO:
                     log_probs_arr.append(log_probs)
                 log_probs = torch.stack(log_probs_arr, dim=1)
             else:
-                action_logits, _, v = self._net(states)
+                action_logits, _, v = self.net(states)
                 assert action_logits.shape == (
                         batch_size, self._action_space.n)
                 dist = torch.distributions.categorical.Categorical(
@@ -246,13 +255,13 @@ class PPO:
             loss = critic_loss + actor_loss
             self._optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self._net.parameters(), 30.0)
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 30.0)
             self._optimizer.step()
 
             stats.set('loss_actor', actor_loss.detach())
             stats.set('loss_critic', critic_loss.detach())
             # Log gradients
-            for p in self._net.parameters():
+            for p in self.net.parameters():
                 if p.grad is not None:
                     stats.set('grad_max', p.grad.abs().max().detach())
                     stats.set(
@@ -268,7 +277,7 @@ class PPO:
 
         # Log entropy metric (opposite to confidence)
         if self._is_continous:
-            action_mu, action_var, _ = self._net(states)
+            action_mu, action_var, _ = self.net(states)
             stats.set('action_variance', action_var.mean().detach())
             stats.set(
                     'action_mu_mean',
