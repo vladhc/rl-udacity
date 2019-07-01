@@ -48,7 +48,7 @@ class MultiPPO:
 
     def load(self, props):
         for idx, agent in enumerate(self._agents):
-            agent.load(props["agent-{}"].format(idx))
+            agent.load(props["agent-{}".format(idx)])
 
     def step(self, states):
         batch_size = len(states)
