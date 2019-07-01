@@ -142,8 +142,15 @@ class QLearning:
         self._step = 0
         self.eval = False
 
-    def save_model(self, filename):
-        torch.save(self._policy_net, filename)
+    def save(self):
+        return {
+            "policy_net": self._policy_net,
+            "target_net": self._target_net,
+        }
+
+    def load(self, props):
+        self._policy_net = props["policy_net"]
+        self._target_net = props["target_net"]
 
     def transitions(self, states, actions, rewards, next_states, dones):
         stats = Statistics()

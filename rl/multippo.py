@@ -34,18 +34,21 @@ class MultiPPO:
             )
             for _ in range(n_agents)
         ]
+        print("\tNumber of sub-agents: {}", self._n_agents)
         self._n_envs = n_envs
+        print("\tNumber of environments: {}", self._n_envs)
         self._action_space = action_space
         self._observation_shape = observation_shape
 
-    def save_model(self, filename):
-        multi_model = {}
+    def save(self):
+        return {
+            "agent-{}".format(idx): agent.save()
+            for idx, agent in enumerate(self._agents)
+        }
+
+    def load(self, props):
         for idx, agent in enumerate(self._agents):
-            agent_filename = filename + "-agent-{}".format(idx)
-            agent.save_model(agent_filename)
-            agent_model = torch.load(agent_filename)
-            multi_model["agent-{}".format(idx)] = agent_model
-        torch.save(multi_model, filename)
+            agent.load(props["agent-{}"].format(idx))
 
     def step(self, states):
         batch_size = len(states)
@@ -103,4 +106,3 @@ class MultiPPO:
     @property
     def _n_agents(self):
         return len(self._agents)
-

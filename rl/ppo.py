@@ -70,8 +70,13 @@ class PPO:
     def _is_continous(self):
         return _is_continous(self._action_space)
 
-    def save_model(self, filename):
-        torch.save(self._net, filename)
+    def save(self):
+        return {
+            "net": self._net,
+        }
+
+    def load(self, props):
+        self._net = props["net"]
 
     def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)

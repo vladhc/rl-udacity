@@ -1,6 +1,8 @@
 import shutil
 import sys
 import time
+import torch
+from glob import glob
 import numpy as np
 import tensorflow as tf
 from rl import Statistics
@@ -22,7 +24,6 @@ class Runner(object):
         self._agent = agent
         self._session_id = session_id
         self._num_iterations = num_iterations
-        self._iteration = 0
         self._training_steps = training_steps
         self._evaluation_steps = evaluation_steps
 
@@ -34,14 +35,23 @@ class Runner(object):
             self._evaluation_steps))
 
         self._bucket = bucket
-
         out_dir = 'gs://{}'.format(bucket.name) if bucket is not None else '.'
         summary_file = '{}/train/{}'.format(out_dir, self._session_id)
-        shutil.rmtree(summary_file, ignore_errors=True)
         self._summary_writer = tf.summary.FileWriter(summary_file, None)
 
+        self._iteration = 0
+        iteration, checkpoint = find_checkpoint(session_id)
+        if iteration >= 0:
+            print("Found checkpoint for iteration {}".format(iteration))
+            print("Loading checkpoint {}".format(checkpoint))
+            self._iteration = iteration
+            props = torch.load(checkpoint)
+            agent.load(props)
+        else:
+            shutil.rmtree(summary_file, ignore_errors=True)
+
     def run_experiment(self):
-        for iteration in range(self._num_iterations):
+        for iteration in range(self._iteration, self._num_iterations):
             self._iteration = (iteration + 1)
             statistics = self._run_one_iteration()
             statistics.log()
@@ -50,7 +60,8 @@ class Runner(object):
     def _checkpoint(self):
         filename = '{}-{}.pth'.format(self._session_id, self._iteration)
         path = './checkpoints/{}'.format(filename)
-        self._agent.save_model(path)
+        props = self._agent.save()
+        torch.save(props, path)
         if self._bucket:
             blob = self._bucket.blob(
                     'checkpoints/{}'.format(filename))
@@ -116,3 +127,17 @@ class Runner(object):
         print()
         self._agent.episodes_end()
         return stats, agent_stats
+
+def find_checkpoint(session):
+    prefix = "checkpoints/{}-".format(session)
+    suffix = ".pth"
+    checkpoints = glob("{}*{}".format(prefix, suffix))
+    max_iteration = -1
+    max_checkpoint = None
+    for checkpoint in checkpoints:
+        cur_iteration = checkpoint[len(prefix):-len(suffix)]
+        cur_iteration = int(cur_iteration)
+        if cur_iteration > max_iteration:
+            max_iteration = cur_iteration
+            max_checkpoint = checkpoint
+    return max_iteration, max_checkpoint

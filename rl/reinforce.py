@@ -57,8 +57,13 @@ class Reinforce:
         self.prev_state = None
         self._trajectory = []
 
-    def save_model(self, filename):
-        torch.save(self._net, filename)
+    def save(self):
+        return {
+            "net": self._net,
+        }
+
+    def load(self, props):
+        self._net = props["net"]
 
     def _store_transition(self, reward):
         if self.eval:
