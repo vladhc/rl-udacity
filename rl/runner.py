@@ -37,6 +37,7 @@ class Runner(object):
         self._bucket = bucket
         out_dir = 'gs://{}'.format(bucket.name) if bucket is not None else '.'
         summary_file = '{}/train/{}'.format(out_dir, self._session_id)
+        print("Saving TensorBoard stats to {}".format(summary_file))
         self._summary_writer = tf.summary.FileWriter(summary_file, None)
 
         self._iteration = 0
