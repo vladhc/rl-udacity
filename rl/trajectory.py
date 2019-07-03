@@ -11,12 +11,13 @@ class Trajectory:
         self.env_idx = env_idx
         self._capacity = capacity
         # +1 here because we store states + one last state
-        self._states = np.zeros(
+        self._states = np.empty(
                 (capacity + 1,) + observation_shape, dtype=np.float16)
-        self.actions = np.zeros(
+        self.actions = np.empty(
                 (capacity,) + action_shape, dtype=action_type)
-        self.rewards = np.zeros(capacity, dtype=np.float16)
+        self.rewards = np.empty(capacity, dtype=np.float16)
         self.terminated = False  # if the final state is term state
+        self.closed = False
 
     def push(self, state, action, reward, next_state, done):
         assert not self.terminated
@@ -73,6 +74,7 @@ class Trajectory:
         self._states = self._states[:self._cursor + 1, :]
         self.actions = self.actions[:self._cursor]
         self.rewards = self.rewards[:self._cursor]
+        self.closed = True
 
     def done(self):
         return self.terminated or self._capacity == len(self)
@@ -86,15 +88,17 @@ class TrajectoryBuffer:
     def __init__(
             self,
             observation_shape,
-            action_space):
+            action_space,
+            horizon=10000):
         self._trajectories = dict()
         self._observation_shape = observation_shape
         self._action_space = action_space
+        self._horizon = horizon
         self.reset()
 
     def _create_trajectory(self, env_idx):
         return Trajectory(
-            10000,
+            self._horizon,
             observation_shape=self._observation_shape,
             action_type=self._action_space.dtype,
             action_shape=self._action_space.shape,
@@ -104,9 +108,10 @@ class TrajectoryBuffer:
         self._records_collected = 0
         self.trajectories = []
         self._trajectories.clear()
+        self._closed = False
 
     def save(self, filename):
-        self._finish_trajectories()
+        self.close()
         torch.save(
             {
                 "memory_store": [
@@ -152,7 +157,11 @@ class TrajectoryBuffer:
             self._append(traj)
             del self._trajectories[env_idx]
 
+    def _enrich_traj(self, traj):
+        return traj
+
     def _append(self, traj):
+        traj = self._enrich_traj(traj)
         self.trajectories.append(traj)
         self._records_collected += len(traj)
 
@@ -160,8 +169,9 @@ class TrajectoryBuffer:
         return self._records_collected + \
                 sum([len(traj) for traj in self._trajectories.values()])
 
-    def _finish_trajectories(self):
+    def close_trajectories(self):
         for _, traj in self._trajectories.items():
             if len(traj) > 0:
                 traj.close()
                 self._append(traj)
+        self._trajectories.clear()

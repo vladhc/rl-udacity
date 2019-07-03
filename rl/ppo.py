@@ -7,7 +7,7 @@ import torch.optim as optim
 from collections import defaultdict
 from torch.multiprocessing import Process, Queue, cpu_count
 
-from rl import Statistics
+from rl import Statistics, TrajectoryBuffer, Trajectory
 from gym import spaces
 
 
@@ -48,16 +48,13 @@ class PPO:
         print("\tHorizon: {}".format(self._horizon))
         self._epochs = epochs
         print("\tEpochs: {}".format(self._epochs))
-        self._buffer = TrajectoryBuffer(
+        self._buffer = GAETrajectoryBuffer(
                 capacity=self._horizon * n_envs,
-                traj_constructor=lambda: Trajectory(
-                    horizon,
-                    observation_shape,
-                    self._action_space.dtype,
-                    self._action_space.shape),
                 horizon=self._horizon,
                 gae_lambda=gae_lambda,
                 gamma=self._gamma,
+                observation_shape=self._observation_shape,
+                action_space=self._action_space,
                 v_fn=self._v)
         if self._is_continous:
             print("\tAction space. Low: {}, high: {}".format(
@@ -126,19 +123,16 @@ class PPO:
         return actions
 
     def episodes_end(self):
-        self._buffer.finish_trajectories()
+        self._buffer.close_trajectories()
 
     def transitions(self, states, actions, rewards, next_states, term):
         assert not self.eval
-
-        for idx in range(len(states)):
-            self._buffer.push(
-                    states[idx],
-                    actions[idx],
-                    rewards[idx],
-                    next_states[idx],
-                    term[idx],
-                    idx)
+        self._buffer.push(
+                states,
+                actions,
+                rewards,
+                next_states,
+                term)
         return self._optimize()
 
     def _v(self, states):
@@ -371,46 +365,24 @@ class Net(nn.Module):
             return action_logits, None, v
 
 
-class Trajectory:
+class GAETrajectory(Trajectory):
 
-    def __init__(self, capacity, observation_shape, action_type, action_shape):
-        self._capacity = capacity
-        self._cursor = 0
-
-        # +1 here because we store states + one last state
-        self._states = np.zeros(
-                (capacity + 1,) + observation_shape, dtype=np.float16)
-        self.actions = np.zeros((capacity,) + action_shape, dtype=action_type)
-        self.rewards = np.zeros(capacity, dtype=np.float16)
-        self.terminated = False  # if the final state is term state
+    def __init__(
+            self,
+            capacity,
+            observation_shape,
+            action_type,
+            action_shape,
+            env_idx):
+        super().__init__(
+                capacity=capacity,
+                observation_shape=observation_shape,
+                action_type=action_type,
+                action_shape=action_shape,
+                env_idx=env_idx,
+        )
         self.gaes = None
         self.v_targets = None
-
-    def push(self, state, action, reward, next_state, done):
-        assert not self.terminated
-        assert self._cursor < self._capacity
-
-        idx = self._cursor
-
-        self._states[idx] = state
-        self._states[idx+1] = next_state
-        assert action.shape == self.actions[idx].shape
-        self.actions[idx] = action
-        self.rewards[idx] = reward
-
-        self._cursor += 1
-
-        if done:
-            self.terminated = True
-            self.close()
-
-    @property
-    def states(self):
-        return self._states[:self._cursor]
-
-    @property
-    def next_states(self):
-        return self._states[1:self._cursor+1]
 
     @property
     def vs(self):
@@ -431,33 +403,25 @@ class Trajectory:
         self._vs = None
         self.rewards = None
 
-    def close(self):
-        # +1 here because we store states + one last state
-        self._states = self._states[:self._cursor + 1, :]
-        self.actions = self.actions[:self._cursor]
-        self.rewards = self.rewards[:self._cursor]
 
-    def done(self):
-        return self.terminated or self._capacity == len(self)
-
-    def __len__(self):
-        return self._cursor
-
-
-class TrajectoryBuffer:
+class GAETrajectoryBuffer(TrajectoryBuffer):
 
     def __init__(
             self,
             capacity,
-            traj_constructor,
             horizon,
             gamma,
             gae_lambda,
+            observation_shape,
+            action_space,
             v_fn):
+        super().__init__(
+                observation_shape=observation_shape,
+                action_space=action_space,
+                horizon=horizon)
         self._gamma = gamma
         self._capacity = capacity
         print("\tlambda for GAE(lambda): {}".format(gae_lambda))
-        self._trajectories = defaultdict(traj_constructor)
         self._enrich_queue = Queue()
         self._traj_queue = Queue()
         self._v_fn = v_fn
@@ -473,45 +437,34 @@ class TrajectoryBuffer:
         for _ in range(enricher_count):
             self._traj_queue.get()
 
-        self.reset()
+    def capacity(self):
+        return self._capacity
 
-    def reset(self):
-        self._records_collected = 0
-
-    def push(self, state, action, reward, next_state, done, env_idx):
-        traj = self._trajectories[env_idx]
-        traj.push(state, action, reward, next_state, done)
-        self._trajectories[env_idx] = traj
-        if traj.done():
-            self._enrich_traj(traj)
-            del self._trajectories[env_idx]
-
-    def __len__(self):
-        return self._records_collected + \
-                sum([len(traj) for traj in self._trajectories.values()])
+    def _create_trajectory(self, env_idx):
+        return GAETrajectory(
+                self._horizon,
+                observation_shape=self._observation_shape,
+                action_type=self._action_space.dtype,
+                action_shape=self._action_space.shape,
+                env_idx=env_idx)
 
     def _enrich_traj(self, traj):
-        self._records_collected += len(traj)
+        if not traj.done() and not traj.closed:
+            return traj
         traj.update_vs(self._v_fn)
         self._enrich_queue.put_nowait(traj)
+        return traj
 
     def ready(self):
         return len(self) >= self._capacity
 
-    def finish_trajectories(self):
-        for _, traj in self._trajectories.items():
-            if len(traj) > 0:
-                traj.close()
-                self._enrich_traj(traj)
-        self._trajectories.clear()
-
     def sample(self):
-        self.finish_trajectories()
+        self.close_trajectories()
 
         v_targets = []
         gaes = []  # Generalized Advantage Estimations
 
-        to_process = self._records_collected
+        to_process = len(self)
 
         trajectories = []
         while to_process != 0:
@@ -538,9 +491,6 @@ class TrajectoryBuffer:
 
         return states, actions, v_targets, gaes
 
-    def capacity(self):
-        return self._capacity
-
 
 def enrich_trajectories(
         gamma, horizon, gae_lambda, src_queue, dst_queue):
@@ -563,7 +513,7 @@ def enrich_trajectories(
         traj.v_targets = traj.rewards + gamma * vs_next
         assert traj.v_targets.shape == traj.rewards.shape
 
-        traj.gaes = np.zeros(len(traj), dtype=np.float16)
+        traj.gaes = np.empty(len(traj), dtype=np.float16)
         for idx in range(len(traj)):
 
             v = vs[idx]
@@ -575,7 +525,7 @@ def enrich_trajectories(
             assert not np.isnan(v_trail).any(), v_trail
 
             # Calculate the Generalized Advantage Estimation
-            advantages = np.zeros(len(v_trail), dtype=np.float16)
+            advantages = np.empty(len(v_trail), dtype=np.float16)
             for n in range(len(v_trail)):
 
                 # n-step reward
