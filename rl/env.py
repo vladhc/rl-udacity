@@ -2,7 +2,7 @@ import time
 import math
 import numpy as np
 from collections import namedtuple
-from multiprocessing import Process, Queue, set_start_method
+from multiprocessing import Process, Pipe, set_start_method
 
 import gym
 from gym import spaces
@@ -225,45 +225,48 @@ class ForkedUnityEnv:
 
     def __init__(self, env_id, render=False):
         self._config = unity_envs[env_id]
-        self._action_queue = Queue()
-        self._traj_queue = Queue()
+        traj_pipe_in, traj_pipe_out = Pipe(duplex=False)
+        action_pipe_in, action_pipe_out = Pipe(duplex=False)
+
+        self._traj_pipe = traj_pipe_in
+        self._action_pipe = action_pipe_out
 
         p = Process(
                 target=_run_forked_unity_env,
                 args=(
                     env_id,
-                    self._action_queue,
-                    self._traj_queue,
+                    action_pipe_in,
+                    traj_pipe_out,
                     render,
                     ForkedUnityEnv.last_unity_worker_id))
         p.start()
         ForkedUnityEnv.last_unity_worker_id += 1
 
-        env_info = self._traj_queue.get()
+        env_info = self._traj_pipe.recv()
         self.observation_space = env_info["observation_space"]
         self.action_space = env_info["action_space"]
         self.n_agents = env_info["n_agents"]
         self.n_envs = env_info["n_envs"]
 
     def step(self, actions):
-        self._action_queue.put_nowait(actions)
-        return self._traj_queue.get
+        self._action_pipe.send(actions)
+        return self._traj_pipe.recv
 
     def reset(self):
-        self._action_queue.put_nowait("RESET")
-        return self._traj_queue.get
+        self._action_pipe.send("RESET")
+        return self._traj_pipe.recv
 
     def render(self):
-        self._action_queue.put_nowait("RENDER")
+        self._action_pipe.send("RENDER")
 
     def close(self):
-        self._action_queue.put("CLOSE")
+        self._action_pipe.send("CLOSE")
 
 
-def _run_forked_unity_env(env_id, action_queue, traj_queue, render, worker_id):
+def _run_forked_unity_env(env_id, action_pipe, traj_pipe, render, worker_id):
     env = _run_unity_env(env_id, worker_id=worker_id, render=render)
 
-    traj_queue.put_nowait({
+    traj_pipe.send({
         "observation_space": env.observation_space,
         "action_space": env.action_space,
         "n_agents": env.n_agents,
@@ -272,11 +275,11 @@ def _run_forked_unity_env(env_id, action_queue, traj_queue, render, worker_id):
 
     while True:
         try:
-            action = action_queue.get()
+            action = action_pipe.recv()
             if action == "RESET":
                 state_promise = env.reset()
                 state = state_promise()
-                traj_queue.put_nowait(state)
+                traj_pipe.send(state)
             elif action == "CLOSE":
                 env.close()
                 return
@@ -285,7 +288,7 @@ def _run_forked_unity_env(env_id, action_queue, traj_queue, render, worker_id):
             else:
                 step_promise = env.step(action)
                 step = step_promise()
-                traj_queue.put_nowait(step)
+                traj_pipe.send(step)
         except KeyboardInterrupt:
             pass
 
