@@ -271,20 +271,23 @@ def _run_forked_unity_env(env_id, action_queue, traj_queue, render, worker_id):
     })
 
     while True:
-        action = action_queue.get()
-        if action == "RESET":
-            state_promise = env.reset()
-            state = state_promise()
-            traj_queue.put_nowait(state)
-        elif action == "CLOSE":
-            env.close()
-            return
-        elif action == "RENDER":
-            env.render()
-        else:
-            step_promise = env.step(action)
-            step = step_promise()
-            traj_queue.put_nowait(step)
+        try:
+            action = action_queue.get()
+            if action == "RESET":
+                state_promise = env.reset()
+                state = state_promise()
+                traj_queue.put_nowait(state)
+            elif action == "CLOSE":
+                env.close()
+                return
+            elif action == "RENDER":
+                env.render()
+            else:
+                step_promise = env.step(action)
+                step = step_promise()
+                traj_queue.put_nowait(step)
+        except KeyboardInterrupt:
+            pass
 
 
 def _run_unity_env(env_id, worker_id, render=False):
