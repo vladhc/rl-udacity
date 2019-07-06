@@ -58,8 +58,10 @@ def play_episode(env, sample_action, debug=False):
 
     while True:
         actions = sample_action(env.states)
-        rewards, _, dones, stats = env.step(actions)
+        rewards, states, dones, stats = env.step(actions)
         if debug:
+            print("states:")
+            print(states)
             print("actions:", actions)
             print("rewards:", rewards)
             if dones.any():
@@ -123,10 +125,9 @@ def sample_action_fn(checkpoint, action_space):
         actions = []
         for idx in range(len(states)):
             key = "agent-{}".format(idx)
-            agent = net[key]
-            agent.train(False)
+            agent = props[key]
             agent_states = np.expand_dims(states[idx], axis=0)
-            action = _ppo(states=agent_states, net=agent)[0]
+            action = _ppo(states=agent_states, props=agent)[0]
             actions.append(action)
         actions = np.asarray(actions)
         batch_size = len(states)
@@ -146,6 +147,7 @@ def sample_action_fn(checkpoint, action_space):
 
 
 if __name__ == '__main__':
+    np.set_printoptions(precision=2, suppress=True)
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint")
     parser.add_argument("--debug", action="store_true")
