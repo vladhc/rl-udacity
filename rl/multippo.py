@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 from rl import PPO
 from rl import Statistics
 

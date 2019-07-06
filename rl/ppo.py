@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from collections import defaultdict
 from torch.multiprocessing import Process, Queue, cpu_count
 
 from rl import Statistics, TrajectoryBuffer, Trajectory
