@@ -1,4 +1,3 @@
-import shutil
 import sys
 import time
 import torch
@@ -50,8 +49,6 @@ class Runner(object):
             self._iteration = iteration
             props = torch.load(checkpoint)
             agent.load(props)
-        else:
-            shutil.rmtree(summary_file, ignore_errors=True)
 
     def run_experiment(self):
         for iteration in range(self._iteration, self._num_iterations):

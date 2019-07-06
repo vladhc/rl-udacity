@@ -13,6 +13,7 @@ class MultiPPO:
             n_envs,
             n_agents,
             combine_states=False,
+            hidden_units=128,
             gamma=0.99,
             horizon=128,
             gae_lambda=0.95,
@@ -34,12 +35,12 @@ class MultiPPO:
         )
 
         # Create agents
-        assert len(observation_shape) == 1
         self._agents = [
             PPO(
                 action_space,
                 observation_shape,
                 n_envs=n_envs,
+                hidden_units=hidden_units,
                 gamma=gamma,
                 horizon=horizon,
                 gae_lambda=gae_lambda,
@@ -50,7 +51,6 @@ class MultiPPO:
             for _ in range(n_agents)
         ]
         self._action_space = action_space
-        self._observation_shape = observation_shape
 
     def save(self):
         return {

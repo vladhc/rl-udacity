@@ -13,6 +13,7 @@ def create_agent(env, args):
     baseline_learning_rate = args["baseline_learning_rate"]
     gamma = args["gamma"]
     learning_rate = args["learning_rate"]
+    hidden_units = args["hidden_units"]
 
     if agent_type == "qlearning":
         return QLearning(
@@ -51,6 +52,7 @@ def create_agent(env, args):
                 learning_rate=learning_rate)
     elif agent_type == "ppo":
         return PPO(
+                hidden_units=hidden_units,
                 action_space=action_space,
                 observation_shape=observation_shape,
                 n_envs=env.n_envs,
@@ -61,6 +63,7 @@ def create_agent(env, args):
                 learning_rate=learning_rate)
     elif agent_type == 'multippo':
         return MultiPPO(
+                hidden_units=hidden_units,
                 action_space=action_space,
                 observation_shape=observation_shape,
                 n_envs=env.n_envs,

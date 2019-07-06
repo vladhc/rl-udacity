@@ -316,9 +316,10 @@ class UnityEnvAdapter:
         # Number of actions
         brain = self._env.brains[self._brain_name]
 
-        state_size = brain.vector_observation_space_size
+        observation_shape = (brain.vector_observation_space_size,)
         if config.id == "tennis":
-            state_size = 24  # Bugfix for the TennisBrain
+            # Fix for the TennisBrain
+            observation_shape = (3, brain.vector_observation_space_size)
 
         if brain.vector_action_space_type == 'continuous':
             self.action_space = spaces.Box(
@@ -332,10 +333,10 @@ class UnityEnvAdapter:
         # Examine the state space
         if brain.vector_observation_space_type == 'continuous':
             print("\tUsing arbitrary 'high' and 'low' values for the " +
-                    "observation space.")
+                  "observation space.")
             self.observation_space = spaces.Box(
                     low=-100.0, high=100.0,
-                    shape=(state_size,))
+                    shape=observation_shape)
         else:
             self.observation_space = spaces.Discrete(
                     brain.vector_observation_space_size)
@@ -344,7 +345,7 @@ class UnityEnvAdapter:
     def step(self, actions):
         """ return next_state, action, reward, None """
         brain_info = self._env.step(actions)[self._brain_name]
-        next_states = brain_info.vector_observations
+        next_states = self._check_states(brain_info.vector_observations)
         rewards = brain_info.rewards
         rewards = np.asarray(rewards)
         dones = np.asarray(brain_info.local_done)
@@ -356,7 +357,14 @@ class UnityEnvAdapter:
     def reset(self):
         """ return state """
         env_info = self._env.reset(train_mode=False)[self._brain_name]
-        return lambda: env_info.vector_observations
+        states = self._check_states(env_info.vector_observations)
+        return lambda: states
+
+    def _check_states(self, states):
+        if self._config.id == "tennis":
+            # Fix for the TennisBrain
+            states = states.reshape(2, 3, 8)
+        return states
 
     def render(self):
         return

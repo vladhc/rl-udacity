@@ -18,6 +18,7 @@ class PPO:
             action_space,
             observation_shape,
             n_envs,
+            hidden_units=128,
             gamma=0.99,
             horizon=128,
             gae_lambda=0.95,
@@ -42,7 +43,10 @@ class PPO:
         self._learning_rate = learning_rate
         print("\tLearning rate: {}".format(learning_rate))
 
-        self.net = Net(observation_shape, action_space)
+        self.net = Net(
+                observation_shape,
+                action_space,
+                hidden_units=hidden_units)
 
         self._horizon = horizon
         print("\tHorizon: {}".format(self._horizon))
@@ -294,24 +298,32 @@ class Net(nn.Module):
 
     def __init__(
             self,
-            observation_size,
-            action_space):
+            observation_shape,
+            action_space,
+            hidden_units=128):
         super(Net, self).__init__()
 
-        self.is_dense = len(observation_size) == 1
+        self.is_dense = len(observation_shape) == 1
         self._action_space = action_space
 
-        hidden_units = 128
-        assert self.is_dense
+        self.hidden_units = hidden_units
+        print("\tHidden units: {}".format(hidden_units))
+
+        if self.is_dense:
+            self.middleware = nn.Sequential(
+                    nn.Linear(observation_shape[0], hidden_units),
+                    nn.ReLU())
+        else:
+            print("\tRNN middleware is used")
+            self.middleware = nn.RNN(
+                    observation_shape[1],
+                    hidden_units,
+                    batch_first=True)
 
         self.middleware_critic = nn.Sequential(
-                nn.Linear(observation_size[0], hidden_units),
-                nn.ReLU(),
                 nn.Linear(hidden_units, hidden_units),
                 nn.ReLU())
         self.middleware_actor = nn.Sequential(
-                nn.Linear(observation_size[0], hidden_units),
-                nn.ReLU(),
                 nn.Linear(hidden_units, hidden_units),
                 nn.ReLU())
 
@@ -343,6 +355,17 @@ class Net(nn.Module):
 
     def forward(self, states):
         batch_size = len(states)
+
+        if self.is_dense:
+            states = self.middleware(states)
+        else:
+            device = next(self.parameters()).device
+            hidden = torch.zeros(1, batch_size, self.hidden_units).to(device)
+            states, _ = self.middleware(states, hidden)
+            states = states[:, -1, :]  # take the last output
+            states_shape = (batch_size, self.hidden_units)
+            assert states.shape == states_shape, states.shape
+
         x = self.middleware_critic(states)
         v = self.head_v(x)
 

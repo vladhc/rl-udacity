@@ -36,8 +36,8 @@ def main(**args):
     traj_buffer = None
     if args["save_traj"]:
         traj_buffer = TrajectoryBuffer(
-                observation_shape=observation_shape,
-                action_space=action_space)
+                observation_shape=env.observation_space.shape,
+                action_space=env.action_space)
         print("Saving trajectories is enabled")
 
     runner = Runner(
