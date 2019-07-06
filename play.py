@@ -57,8 +57,9 @@ def play_episode(env, sample_action, debug=False):
     env.reset()
 
     while True:
+        states = env.states
         actions = sample_action(env.states)
-        rewards, states, dones, stats = env.step(actions)
+        rewards, _, dones, stats = env.step(actions)
         if debug:
             print("states:")
             print(states)
