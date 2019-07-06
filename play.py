@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import time
 import os
-from rl import create_env, GreedyPolicy
+from rl import create_env, GreedyPolicy, Statistics
 import numpy as np
 from gym import spaces
 
@@ -12,32 +12,41 @@ def main(checkpoint, debug=False):
     filename = os.path.basename(checkpoint)
     s = filename.split('-')
 
+    # Create Environment
     # Derive environment ID from the checkpoint filename
     file_prefix = s[0]
-    env_id = {
+    openai_env_ids = {
             "pole": "CartPole-v1",
             "lunarcont": "LunarLanderContinuous-v2",
             "lunar": "LunarLander-v2",
             "carcont": "MountainCarContinuous-v0",
             "pendulum": "Pendulum-v0",
-            "reacher": "reacher",
-            "crawler": "crawler",
-            "banana": "banana",
-            "tennis": "tennis",
-            }[file_prefix]
+    }
+    if file_prefix in openai_env_ids:
+        env_id = openai_env_ids[file_prefix]
+    else:
+        env_id = file_prefix
+
     s = s[1:]
 
     env = create_env(env_id)
+
+    # Create agent
     sample_action = sample_action_fn(checkpoint, env.action_space)
 
-    rewards = []
+    stats = Statistics()
 
     try:
         while True:
-            reward = play_episode(env, sample_action, debug=debug)
-            rewards.append(reward)
-            print("Reward #{}: {}; Average: {}".format(
-                len(rewards), rewards[-1], np.average(rewards)))
+            episode_stats = play_episode(env, sample_action, debug=debug)
+            stats.set_all(episode_stats)
+            print(("Episode #{}: {:.2f}; Average Reward: {:.2f}; " +
+                  "Episode length: {}; Average episode length: {:.1f}").format(
+                      stats.sum("episodes"),
+                      episode_stats.avg("rewards"),
+                      stats.avg("rewards"),
+                      int(episode_stats.avg("steps")),
+                      stats.avg("steps")))
     except KeyboardInterrupt:
         env.close()
         return
@@ -46,11 +55,10 @@ def main(checkpoint, debug=False):
 
 def play_episode(env, sample_action, debug=False):
     env.reset()
-    reward_acc = 0.0
 
     while True:
         actions = sample_action(env.states)
-        rewards, _, dones, _ = env.step(actions)
+        rewards, _, dones, stats = env.step(actions)
         if debug:
             print("actions:", actions)
             print("rewards:", rewards)
@@ -61,17 +69,16 @@ def play_episode(env, sample_action, debug=False):
             input("Press for the next step...")
         else:
             time.sleep(0.02)
-        reward_acc += np.average(rewards)
         if dones.any():
             break
-    return reward_acc
+    return stats
 
 
 def sample_action_fn(checkpoint, action_space):
-    net = torch.load(checkpoint, map_location="cpu")
+    props = torch.load(checkpoint, map_location="cpu")
 
-    if isinstance(net, nn.Module):
-        net.train(False)
+    if isinstance(props, nn.Module):
+        props.train(False)
 
     is_continous = isinstance(action_space, spaces.Box)
 
@@ -82,7 +89,8 @@ def sample_action_fn(checkpoint, action_space):
         q_values = net(states_tensor)
         return policy.get_action(q_values.detach().cpu().numpy())
 
-    def _ppo(states, net):
+    def _ppo(states, props):
+        net = props["net"]
         states_tensor = torch.from_numpy(states).float()
         if is_continous:
             batch_size = len(states)
@@ -130,7 +138,7 @@ def sample_action_fn(checkpoint, action_space):
     filename = os.path.basename(checkpoint)
     for s in filename.split('-'):
         if s == "ppo":
-            return lambda states: _ppo(states, net)
+            return lambda states: _ppo(states, props)
         elif s == "multippo":
             return _multippo
 
