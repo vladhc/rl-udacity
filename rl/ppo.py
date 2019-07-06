@@ -320,7 +320,7 @@ class Net(nn.Module):
             assert len(self._action_space.shape) == 1
             action_size = self._action_space.shape[0]
             self.head_mu = nn.Linear(
-                    hidden_units, action_size)
+                    hidden_units, action_size, bias=False)
             mu_scale = torch.tensor(
                     (action_space.high - action_space.low) / 2).float()
             mu_offset = torch.tensor(
