@@ -301,7 +301,7 @@ class Net(nn.Module):
             observation_shape,
             action_space,
             hidden_units=128):
-        super(Net, self).__init__()
+        super().__init__()
 
         self.is_dense = len(observation_shape) == 1
         self._action_space = action_space
@@ -310,22 +310,30 @@ class Net(nn.Module):
         print("\tHidden units: {}".format(hidden_units))
 
         if self.is_dense:
-            self.middleware = nn.Sequential(
-                    nn.Linear(observation_shape[0], hidden_units),
-                    nn.ReLU())
+            self.state_norm = nn.BatchNorm1d(observation_shape[0])
+            self.middleware = nn.Linear(
+                    observation_shape[0],
+                    hidden_units,
+                    bias=False)
+
         else:
             print("\tRNN middleware is used")
+            self.state_norm = nn.BatchNorm1d(
+                    observation_shape[0] * observation_shape[1])
             self.middleware = nn.RNN(
                     observation_shape[1],
                     hidden_units,
                     batch_first=True)
+        self.middleware_norm = nn.BatchNorm1d(hidden_units)
 
+        self.middleware_critic_norm = nn.BatchNorm1d(hidden_units)
         self.middleware_critic = nn.Sequential(
                 nn.Linear(hidden_units, hidden_units),
-                nn.ReLU())
+                nn.LeakyReLU())
+        self.middleware_actor_norm = nn.BatchNorm1d(hidden_units)
         self.middleware_actor = nn.Sequential(
                 nn.Linear(hidden_units, hidden_units),
-                nn.ReLU())
+                nn.LeakyReLU())
 
         self.head_v = nn.Linear(hidden_units, 1)
         if self._is_continous:
@@ -356,6 +364,12 @@ class Net(nn.Module):
     def forward(self, states):
         batch_size = len(states)
 
+        # Batch normalization of the states
+        states_shape = states.shape
+        states = states.view(batch_size, -1)
+        states = self.state_norm(states)
+        states = states.view(states_shape)
+
         if self.is_dense:
             states = self.middleware(states)
         else:
@@ -365,6 +379,8 @@ class Net(nn.Module):
             states = states[:, -1, :]  # take the last output
             states_shape = (batch_size, self.hidden_units)
             assert states.shape == states_shape, states.shape
+        states = self.middleware_norm(states)
+        states = F.leaky_relu(states)
 
         x = self.middleware_critic(states)
         v = self.head_v(x)
