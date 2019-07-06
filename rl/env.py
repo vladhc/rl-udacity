@@ -358,6 +358,11 @@ class UnityEnvAdapter:
         """ return state """
         env_info = self._env.reset(train_mode=False)[self._brain_name]
         states = self._check_states(env_info.vector_observations)
+        if self._config.id == "tennis":
+            noop = np.zeros((2, 2))
+            self.step(noop)()
+            step_promise = self.step(noop)
+            states, _, _ = step_promise()
         return lambda: states
 
     def _check_states(self, states):
