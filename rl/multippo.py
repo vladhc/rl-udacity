@@ -66,11 +66,13 @@ class MultiPPO:
 
         states = self._state_preprocessor(states)
         actions_shape = (batch_size,) + self._action_space.shape
-        actions = np.empty(shape=actions_shape, dtype=self._action_space.dtype)
+        actions = np.empty(
+                shape=actions_shape,
+                dtype=self._action_space.dtype)
         for agent_idx, agent in enumerate(self._agents):
             agent_states = states[agent_idx::self._n_agents]
             agent_actions = agent.step(agent_states)
-            actions[agent_idx::self._n_agents, :] = agent_actions
+            actions[agent_idx::self._n_agents] = agent_actions
 
         assert actions.shape == actions_shape, actions.shape
         return actions

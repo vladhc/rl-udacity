@@ -6,9 +6,14 @@ import os
 from rl import create_env, GreedyPolicy, Statistics
 import numpy as np
 from gym import spaces
+from glob import glob
 
 
 def main(checkpoint, debug=False):
+    checkpoints = glob(checkpoint + "*")
+    checkpoints.sort()
+
+    checkpoint = checkpoints[-1]
     filename = os.path.basename(checkpoint)
     s = filename.split('-')
 
@@ -27,6 +32,9 @@ def main(checkpoint, debug=False):
     else:
         env_id = file_prefix
 
+    while env_id[-1].isdigit():
+        env_id = env_id[:-1]
+
     s = s[1:]
 
     env = create_env(env_id)
@@ -34,11 +42,22 @@ def main(checkpoint, debug=False):
     # Create agent
     sample_action = sample_action_fn(checkpoint, env.action_space)
 
+    def _load_checkpoint(mask):
+        nonlocal sample_action
+        for checkpoint in checkpoints:
+            if mask in checkpoint:
+                sample_action = sample_action_fn(checkpoint, env.action_space)
+                print("loading checkpoint {}".format(checkpoint))
+                return sample_action
+
     stats = Statistics()
 
     try:
         while True:
-            episode_stats = play_episode(env, sample_action, debug=debug)
+            episode_stats = play_episode(env,
+                    sample_action,
+                    debug=debug,
+                    load_checkpoint=_load_checkpoint)
             stats.set_all(episode_stats)
             print(("Episode #{}: {:.2f}; Average Reward: {:.2f}; " +
                   "Episode length: {}; Average episode length: {:.1f}").format(
@@ -53,7 +72,7 @@ def main(checkpoint, debug=False):
     env.close()
 
 
-def play_episode(env, sample_action, debug=False):
+def play_episode(env, sample_action, load_checkpoint, debug=False):
     env.reset()
 
     while True:
@@ -69,7 +88,9 @@ def play_episode(env, sample_action, debug=False):
                 print("term:", dones)
         env.render()
         if debug:
-            input("Press for the next step...")
+            s = input("Press for the next step...")
+            if len(s) > 0:
+                sample_action = load_checkpoint(s)
         else:
             time.sleep(0.02)
         if dones.any():
