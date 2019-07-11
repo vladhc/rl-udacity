@@ -90,7 +90,7 @@ class TrajectoryBuffer:
             observation_shape,
             action_space,
             horizon=10000):
-        self._trajectories = dict()
+        self._trajectories_wip = dict()
         self._observation_shape = observation_shape
         self._action_space = action_space
         self._horizon = horizon
@@ -107,29 +107,27 @@ class TrajectoryBuffer:
     def reset(self):
         self._records_collected = 0
         self.trajectories = []
-        self._trajectories.clear()
-        self._closed = False
+        self._trajectories_wip.clear()
 
-    def save(self, filename):
-        self.close()
-        torch.save(
-            {
-                "memory_store": [
-                    traj.save() for traj in self.trajectories],
-                "observation_shape": self._observation_shape,
-                "action_space": self._action_space,
-            },
-            filename)
+    def save(self):
+        return {
+            "memory_store": [
+                traj.save() for traj in self.trajectories],
+            "observation_shape": self._observation_shape,
+            "action_space": self._action_space,
+        }
 
     @staticmethod
     def load(filename):
-        d = torch.load(filename)
+        if isinstance(filename, str):
+            d = torch.load(filename)
+        else:
+            d = filename
         b = TrajectoryBuffer(
                 observation_shape=d["observation_shape"],
                 action_space=d["action_space"])
         memory = d["memory_store"]
-        while len(memory) != 0:
-            traj_dict = memory.pop(0)
+        for traj_dict in memory:
             traj_dict['observation_shape'] = b._observation_shape
             traj_dict['action_type'] = b._action_space.dtype
             traj_dict['action_shape'] = b._action_space.shape
@@ -148,14 +146,14 @@ class TrajectoryBuffer:
                     idx)
 
     def _push_single(self, state, action, reward, next_state, done, env_idx):
-        if env_idx not in self._trajectories:
-            self._trajectories[env_idx] = self._create_trajectory(env_idx)
-        traj = self._trajectories[env_idx]
+        if env_idx not in self._trajectories_wip:
+            self._trajectories_wip[env_idx] = self._create_trajectory(env_idx)
+        traj = self._trajectories_wip[env_idx]
         traj.push(state, action, reward, next_state, done)
-        self._trajectories[env_idx] = traj
+        self._trajectories_wip[env_idx] = traj
         if traj.done():
             self._append(traj)
-            del self._trajectories[env_idx]
+            del self._trajectories_wip[env_idx]
 
     def _enrich_traj(self, traj):
         return traj
@@ -167,11 +165,11 @@ class TrajectoryBuffer:
 
     def __len__(self):
         return self._records_collected + \
-                sum([len(traj) for traj in self._trajectories.values()])
+                sum([len(traj) for traj in self._trajectories_wip.values()])
 
     def close_trajectories(self):
-        for _, traj in self._trajectories.items():
+        for _, traj in self._trajectories_wip.items():
             if len(traj) > 0:
                 traj.close()
                 self._append(traj)
-        self._trajectories.clear()
+        self._trajectories_wip.clear()

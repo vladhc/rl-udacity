@@ -12,6 +12,7 @@ from rl import Statistics
 
 # Common code for both Unity and OpenAI environments
 
+
 def create_env(env_id, count=1):
     set_start_method('spawn')
     assert count > 0
@@ -348,6 +349,10 @@ class UnityEnvAdapter:
         next_states = self._check_states(brain_info.vector_observations)
         rewards = brain_info.rewards
         rewards = np.asarray(rewards)
+        if self._config.id == "tennis":
+            # modify rewards
+            mask = (rewards < 0)
+            rewards[mask] = -0.1
         dones = np.asarray(brain_info.local_done)
 
         assert rewards.shape == (self._batch_size,)

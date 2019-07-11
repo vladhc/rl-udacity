@@ -71,7 +71,9 @@ class Runner(object):
 
         # Save Trajectories
         if self._traj_buffer is not None:
-            self._traj_buffer.save("./trajectories/{}".format(filename))
+            props = self._traj_buffer.save()
+            torch.save(props, "./trajectories/{}".format(filename))
+
             self._traj_buffer.reset()
             if self._bucket:
                 blob = self._bucket.blob(
@@ -104,6 +106,7 @@ class Runner(object):
                      else self._evaluation_steps) * self._env.n_agents
 
         self._env.reset()
+
         while stats.sum("steps") < min_steps:
             step_time0 = time.time()
 
@@ -141,7 +144,9 @@ class Runner(object):
             sys.stdout.flush()
         print()
         self._agent.episodes_end()
+
         return stats, agent_stats
+
 
 def find_checkpoint(session):
     prefix = "checkpoints/{}-".format(session)

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Queue, cpu_count
 
 from rl import Statistics, TrajectoryBuffer, Trajectory
 from gym import spaces
@@ -37,15 +37,18 @@ class PPO:
 
         self._device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
+        self._net = Net(
+                observation_shape,
+                action_space,
+                hidden_units=hidden_units)
+        self._net.to(self._device)
 
         # Optimizer and loss
         self._learning_rate = learning_rate
         print("\tLearning rate: {}".format(learning_rate))
-
-        self.net = Net(
-                observation_shape,
-                action_space,
-                hidden_units=hidden_units)
+        self._optimizer = optim.Adam(
+                self._net.parameters(),
+                lr=self._learning_rate)
 
         self._horizon = horizon
         print("\tHorizon: {}".format(self._horizon))
@@ -68,24 +71,19 @@ class PPO:
         return _is_continous(self._action_space)
 
     def save(self):
-        return {
-            "net": self.net,
+        props = {
+            "net": self._net.state_dict(),
+            "optimizer": self._optimizer.state_dict(),
         }
+        return props
 
     def load(self, props):
-        self.net = props["net"]
+        self._net.load_state_dict(props["net"])
+        self._optimizer.load_state_dict(props["optimizer"])
 
     @property
     def net(self):
         return self._net
-
-    @net.setter
-    def net(self, net):
-        self._net = net
-        self._net.to(self._device)
-        self._optimizer = optim.Adam(
-                self._net.parameters(),
-                lr=self._learning_rate)
 
     def step(self, states):
         states_tensor = torch.from_numpy(states).float().to(self._device)
@@ -310,7 +308,11 @@ class Net(nn.Module):
 
         if self.is_dense:
             self.state_norm = nn.BatchNorm1d(observation_shape[0])
-            self.middleware = nn.Linear(
+            self.middleware_critic_1 = nn.Linear(
+                    observation_shape[0],
+                    hidden_units,
+                    bias=False)
+            self.middleware_actor_1 = nn.Linear(
                     observation_shape[0],
                     hidden_units,
                     bias=False)
@@ -319,18 +321,21 @@ class Net(nn.Module):
             print("\tRNN middleware is used")
             self.state_norm = nn.BatchNorm1d(
                     observation_shape[0] * observation_shape[1])
-            self.middleware = nn.RNN(
+            self.middleware_critic_1 = nn.RNN(
                     observation_shape[1],
                     hidden_units,
                     batch_first=True)
-        self.middleware_norm = nn.BatchNorm1d(hidden_units)
+            self.middleware_actor_1 = nn.RNN(
+                    observation_shape[1],
+                    hidden_units,
+                    batch_first=True)
+        self.middleware_critic_norm_1 = nn.BatchNorm1d(hidden_units)
+        self.middleware_actor_norm_1 = nn.BatchNorm1d(hidden_units)
 
-        self.middleware_critic_norm = nn.BatchNorm1d(hidden_units)
-        self.middleware_critic = nn.Sequential(
+        self.middleware_critic_2 = nn.Sequential(
                 nn.Linear(hidden_units, hidden_units),
                 nn.LeakyReLU())
-        self.middleware_actor_norm = nn.BatchNorm1d(hidden_units)
-        self.middleware_actor = nn.Sequential(
+        self.middleware_actor_2 = nn.Sequential(
                 nn.Linear(hidden_units, hidden_units),
                 nn.LeakyReLU())
 
@@ -350,7 +355,7 @@ class Net(nn.Module):
             print("\tmu offset:", self.mu_offset)
             assert self.mu_scale.shape == self._action_space.shape
             assert self.mu_offset.shape == self._action_space.shape
-            self.register_parameter('head_variance',
+            self.register_parameter("head_variance",
                     nn.Parameter(torch.zeros(action_size)))
         else:
             action_size = action_space.n
@@ -370,25 +375,29 @@ class Net(nn.Module):
         states = states.view(states_shape)
 
         if self.is_dense:
-            states = self.middleware(states)
+            x_critic = self.middleware_critic_1(states)
+            x_actor = self.middleware_actor_1(states)
         else:
             device = next(self.parameters()).device
-            hidden = torch.zeros(1, batch_size, self.hidden_units).to(device)
-            states, _ = self.middleware(states, hidden)
-            states = states[:, -1, :]  # take the last output
+            hidden_critic = torch.zeros(1, batch_size, self.hidden_units).to(device)
+            hidden_actor = torch.zeros(1, batch_size, self.hidden_units).to(device)
+            x_critic, _ = self.middleware_critic_1(states, hidden_critic)
+            x_actor, _ = self.middleware_actor_1(states, hidden_actor)
+            x_critic = x_critic[:, -1, :]  # take the last output
+            x_actor = x_actor[:, -1, :]  # take the last output
             states_shape = (batch_size, self.hidden_units)
-            assert states.shape == states_shape, states.shape
-        states = self.middleware_norm(states)
-        states = F.leaky_relu(states)
+            assert x_critic.shape == states_shape, x_critic.shape
+            assert x_actor.shape == states_shape, x_actor.shape
+        x_critic = F.leaky_relu(self.middleware_critic_norm_1(x_critic))
+        x_actor = F.leaky_relu(self.middleware_critic_norm_1(x_actor))
 
-        x = self.middleware_critic(states)
-        v = self.head_v(x)
-
-        x = self.middleware_actor(states)
+        v = self.head_v(x_critic)
         assert v.shape == (batch_size, 1)
+
+        x_actor = self.middleware_actor_2(x_actor)
         if self._is_continous:
             actions_shape = (batch_size,) + self._action_space.shape
-            mu = self.head_mu(x)
+            mu = self.head_mu(x_actor)
             assert not torch.isnan(mu).any(), mu
             mu = F.tanh(mu)
             mu = mu * self.mu_scale + self.mu_offset
@@ -399,7 +408,7 @@ class Net(nn.Module):
             assert variance.shape == actions_shape, variance.shape
             return mu, variance, v
         else:
-            action_logits = self.head_action_logits(x)
+            action_logits = self.head_action_logits(x_actor)
             return action_logits, None, v
 
 
@@ -509,6 +518,8 @@ class GAETrajectoryBuffer(TrajectoryBuffer):
             traj = self._traj_queue.get()
             trajectories.append(traj)
             to_process -= len(traj)
+
+        assert self._traj_queue.empty()
 
         states = np.concatenate([
             traj.states for traj in trajectories
