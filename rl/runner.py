@@ -123,13 +123,14 @@ class Runner(object):
 
             if is_training:
                 t0 = time.time()
-                agent_stats.set_all(
-                        self._agent.transitions(
+                opt_stat = self._agent.transitions(
                             states,
                             actions,
                             rewards,
                             next_states,
-                            dones))
+                            dones)
+                if opt_stat is not None:
+                    agent_stats.set_all(opt_stat)
                 stats.set("agent_time", time.time() - t0)
                 stats.set("step_time", time.time() - step_time0)
 

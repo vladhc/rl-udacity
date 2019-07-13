@@ -4,6 +4,7 @@ import torch.nn as nn
 import time
 import os
 from rl import create_env, GreedyPolicy, Statistics
+from rl import Reinforce
 import numpy as np
 from gym import spaces
 from glob import glob
@@ -32,21 +33,18 @@ def main(checkpoint, debug=False):
     else:
         env_id = file_prefix
 
-    while env_id[-1].isdigit():
-        env_id = env_id[:-1]
-
     s = s[1:]
 
     env = create_env(env_id)
 
     # Create agent
-    sample_action = sample_action_fn(checkpoint, env.action_space)
+    sample_action = sample_action_fn(checkpoint, env.action_space, env.observation_space)
 
     def _load_checkpoint(mask):
         nonlocal sample_action
         for checkpoint in checkpoints:
             if mask in checkpoint:
-                sample_action = sample_action_fn(checkpoint, env.action_space)
+                sample_action = sample_action_fn(checkpoint, env.action_space, env.observation_space)
                 print("loading checkpoint {}".format(checkpoint))
                 return sample_action
 
@@ -98,7 +96,7 @@ def play_episode(env, sample_action, load_checkpoint, debug=False):
     return stats
 
 
-def sample_action_fn(checkpoint, action_space):
+def sample_action_fn(checkpoint, action_space, observation_space):
     props = torch.load(checkpoint, map_location="cpu")
 
     if isinstance(props, nn.Module):
@@ -157,6 +155,9 @@ def sample_action_fn(checkpoint, action_space):
         assert actions.shape == actions_shape, actions.shape
         return actions
 
+    def _reinforce(states, agent):
+        return agent.step(states)
+
     # Derive agent from the checkpoint filename
     filename = os.path.basename(checkpoint)
     for s in filename.split('-'):
@@ -164,6 +165,10 @@ def sample_action_fn(checkpoint, action_space):
             return lambda states: _ppo(states, props)
         elif s == "multippo":
             return _multippo
+        elif s == "reinforce":
+            agent = Reinforce(action_space, observation_space)
+            agent.load(props)
+            return lambda states: _reinforce(states, agent)
 
     return _qlearning
 

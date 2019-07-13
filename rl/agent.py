@@ -38,8 +38,8 @@ def create_agent(env, args):
                 epsilon_decay=args["epsilon_decay"])
     elif agent_type == "reinforce":
         return Reinforce(
-                action_size=action_space.n,
-                observation_shape=observation_shape,
+                action_space=env.action_space,
+                observation_space=env.observation_space,
                 gamma=gamma,
                 learning_rate=learning_rate,
                 baseline=baseline,
