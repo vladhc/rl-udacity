@@ -22,3 +22,4 @@ Trained models are stored in the `checkpoins` folder and TensorBoard statistics 
 
 1. [Bananas](./p1_navigation/README.md)
 2. [Reacher](./p2_continuous/README.md)
+3. [Tennis](./p3_multiagent/README.md)
