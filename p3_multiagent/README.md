@@ -42,7 +42,7 @@ For viewing TensorBoard graphs run `tensorboard --logdir=./train` from the root 
 
 Video of the original trained agent from the [solution](./Report.md):
 
-![play](https://github.com/vladhc/rl-udacity/raw/master/p3_continuous/tennis.gif "Agent playing Tennis environment")
+![play](./tennis.gif "Agent playing Tennis environment")
 
 For visualization of the trained agent use the `play.py` script from the root directory of the git repo:
 

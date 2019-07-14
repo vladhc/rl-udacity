@@ -58,7 +58,7 @@ The winner, surprisingly, is the single-agent version of the PPO algorithm. It t
 
 ![play](./tennis.gif "Agent playing Tennis environment")
 
-After training 2088 iterations the agent reaches target score [XXXXX on 100 episodes](./tennis-ppo-2088-eval.csv). The amount of steps is the same for all iterations, but one iteration can have multiple episode. After training on 3262 iterations agent reaches average score of [2.17 on 100 episodes](./tennis-ppo-3262-eval.csv).
+After training 2088 iterations the agent reaches target score [0.62 on 100 episodes](./tennis-ppo-2088-eval.csv). The amount of steps is the same for all iterations, but one iteration can have multiple episode. After training on 3262 iterations agent reaches average score of [2.17 on 100 episodes](./tennis-ppo-3262-eval.csv).
 
 ![evaluation](./evaluation.png "Evaluation graph of the trained agent")
 
