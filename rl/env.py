@@ -167,7 +167,7 @@ class WrapNormalizeState(gym.ObservationWrapper):
     def observation(self, observation):
         x = np.array(observation)
         x -= self.min_value
-        x /= self.max_value - self.min_value # we hope no division by zero here :-)
+        x /= (self.max_value - self.min_value) # we hope no division by zero here, and this formula is more correct for rescaling, bro.
         x = 2.0 * x - 1.0  # Rescale in range [-1, 1].
         return x
 
